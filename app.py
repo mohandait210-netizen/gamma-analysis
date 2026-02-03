@@ -102,23 +102,22 @@ if uploaded_file is not None:
     st.dataframe(df_summary)
     
 # --- Texte copiable ---
-top_gex_strikes = (
-    df_gex
-    .sort_values("ABS", ascending=False)   # tri clair et fiable
-    ["Strike"]
-    .head(4)
-    .tolist()
-)
+    top_gex_strikes = (
+        df_gex
+        .sort_values("ABS", ascending=False)
+        ["Strike"]
+        .head(4)
+        .tolist()
+    )
 
-# sécuriser si moins de 4 strikes
-while len(top_gex_strikes) < 4:
-    top_gex_strikes.append("0000")
+    while len(top_gex_strikes) < 4:
+        top_gex_strikes.append("0000")
 
-copy_text = f"$QQQ, QQQ, {call_wall}, {put_wall}, {round(zero_gamma,2) if zero_gamma else 'N/A'}, " \
-            f"{top_gex_strikes[0]}, {top_gex_strikes[1]},"
+    copy_text = f"$QQQ, QQQ, {call_wall}, {put_wall}, {round(zero_gamma,2) if zero_gamma else 'N/A'}, " \
+                f"{top_gex_strikes[0]}, {top_gex_strikes[1]}, {top_gex_strikes[2]}, {top_gex_strikes[3]},"
 
-st.text_area(
-    "Texte copiable",
-    value=copy_text,
-    height=120
-)
+    st.text_area(
+        "Texte copiable",
+        value=copy_text,
+        height=120
+    )
