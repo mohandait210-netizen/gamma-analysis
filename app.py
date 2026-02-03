@@ -100,3 +100,20 @@ if uploaded_file is not None:
     df_summary = pd.DataFrame(summary_data)
     st.write("### 📊 Résumé de l'analyse Gamma")
     st.dataframe(df_summary)
+    
+# --- Texte copiable ---
+top_gex_strikes = df_gex.nlargest(4, 'ABS')['Strike'].tolist()
+
+# sécuriser si moins de 4 strikes
+while len(top_gex_strikes) < 4:
+    top_gex_strikes.append("0000")
+
+copy_text = f"$QQQ, QQQ, {call_wall}, {put_wall}, 0000, " \
+            f"{top_gex_strikes[0]}, {top_gex_strikes[1]}, {top_gex_strikes[2]}, {top_gex_strikes[3]}, " \
+            f"0000, 0000, 0000, 0000, 0000, 0000, {round(zero_gamma,2) if zero_gamma else 'N/A'},"
+
+st.text_area(
+    "Texte copiable",
+    value=copy_text,
+    height=120
+)
