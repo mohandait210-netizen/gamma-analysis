@@ -51,15 +51,23 @@ if uploaded_file is not None:
     df_gex_negative = df_gex[df_gex['GEX'] < 0]
     put_wall = df_gex_negative.loc[df_gex_negative['GEX'].idxmin()]['Strike'] if not df_gex_negative.empty else 'N/A'
 
-    # --- Graphique GEX concentré ---
-    top_n = st.slider("Nombre de strikes dominants", 5, 30, 10)
-    df_top_abs = df_gex.nlargest(top_n, 'ABS')
+   # Graphique GEX
+plt.figure(figsize=(12, 6))
+plt.plot(df_plot["Strike"], df_plot["GEX"], marker='o', linestyle='-', color='blue', label='GEX')
+plt.xlabel("Strike Price")
+plt.ylabel("Gamma Exposure (GEX)")
+plt.title(f"Courbe de Gamma Exposure (GEX) par Strike pour la date d'expiration la plus proche ({closest_expiration_date})")
+plt.grid(True)
 
-    fig, ax = plt.subplots(figsize=(12,6))
-    ax.bar(df_top_abs["Strike"], df_top_abs["GEX"], color='blue')
-    ax.axhline(y=0, color="black", linestyle="--")
-    ax.set_title(f"Concentration GEX ({closest_expiration_date})")
-    st.pyplot(fig)
+# Ajuster les ticks de l'axe X pour une meilleure lisibilité
+if len(df_plot) > 20:
+    tick_interval = max(1, len(df_plot) // 10)
+    plt.xticks(df_plot["Strike"].iloc[::tick_interval], rotation=45)
+else:
+    plt.xticks(df_plot["Strike"], rotation=45)
+
+plt.axhline(y=0, color="blue", linestyle="--", linewidth=2) # L'axe de 0 en bleu et plus épais
+
 
     # --- Graphique Calls vs Puts ---
     df_gex_components_grouped = df_filtered[['Strike','GEX_Calls','GEX_Puts']].dropna().copy()
