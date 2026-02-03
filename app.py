@@ -60,15 +60,35 @@ if uploaded_file is not None:
     df_gex_negative = df_gex[df_gex['GEX'] < 0]
     put_wall = df_gex_negative.loc[df_gex_negative['GEX'].idxmin()]['Strike'] if not df_gex_negative.empty else 'N/A'
 
-    # --- Graphique GEX concentré ---
-    top_n = st.slider("Nombre de strikes dominants", 5, 30, 10)
-    df_top_abs = df_gex.nlargest(top_n, 'ABS')
+    # --- Graphique GEX en courbe avec lignes verticales ---
+top_n = st.slider("Nombre de strikes dominants", 5, 30, 10)
+df_top_abs = df_gex.nlargest(top_n, 'ABS')
 
-    fig, ax = plt.subplots(figsize=(12,6))
-    ax.bar(df_top_abs["Strike"], df_top_abs["GEX"], color='blue')
-    ax.axhline(y=0, color="black", linestyle="--")
-    ax.set_title(f"Concentration GEX ({closest_expiration_date})")
-    st.pyplot(fig)
+fig, ax = plt.subplots(figsize=(12,6))
+
+# Courbe GEX
+ax.plot(df_top_abs["Strike"], df_top_abs["GEX"], marker='o', linestyle='-', color='blue', label='GEX')
+
+# Axe horizontal à 0
+ax.axhline(y=0, color="black", linestyle="--", linewidth=1)
+
+# Lignes verticales pour CALL_WALL, PUT_WALL et ZERO GAMMA
+if isinstance(call_wall, (int, float)):
+    ax.axvline(x=call_wall, color='green', linestyle='--', linewidth=2, label='CALL_WALL')
+if isinstance(put_wall, (int, float)):
+    ax.axvline(x=put_wall, color='red', linestyle='--', linewidth=2, label='PUT_WALL')
+if zero_gamma is not None and isinstance(zero_gamma, (int, float)):
+    ax.axvline(x=zero_gamma, color='orange', linestyle='--', linewidth=2, label='ZERO GAMMA')
+
+# Titres et légende
+ax.set_xlabel("Strike Price")
+ax.set_ylabel("Gamma Exposure (GEX)")
+ax.set_title(f"Courbe de concentration GEX ({closest_expiration_date})")
+ax.legend()
+ax.grid(True)
+
+st.pyplot(fig)
+
 
     # --- Graphique Calls vs Puts ---
     df_gex_components_grouped = df_filtered[['Strike','GEX_Calls','GEX_Puts']].dropna().copy()
