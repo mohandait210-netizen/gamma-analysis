@@ -102,7 +102,13 @@ if uploaded_file is not None:
     st.dataframe(df_summary)
     
 # --- Texte copiable ---
-top_gex_strikes = df_gex.nlargest(4, 'ABS')['Strike'].tolist()
+top_gex_strikes = (
+    df_gex
+    .sort_values("ABS", ascending=False)   # tri clair et fiable
+    ["Strike"]
+    .head(4)
+    .tolist()
+)
 
 # sécuriser si moins de 4 strikes
 while len(top_gex_strikes) < 4:
