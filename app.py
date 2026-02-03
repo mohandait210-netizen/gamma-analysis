@@ -51,27 +51,14 @@ if uploaded_file is not None:
     df_gex_negative = df_gex[df_gex['GEX'] < 0]
     put_wall = df_gex_negative.loc[df_gex_negative['GEX'].idxmin()]['Strike'] if not df_gex_negative.empty else 'N/A'
 
-    # -------- Graphique GEX --------
+    # --- Graphique GEX concentré ---
+    top_n = st.slider("Nombre de strikes dominants", 5, 30, 10)
+    df_top_abs = df_gex.nlargest(top_n, 'ABS')
+
     fig, ax = plt.subplots(figsize=(12,6))
-
-    ax.plot(plot_df["Strike"], plot_df["GEX"], marker='o')
-    ax.axhline(y=0, linestyle="--")
-
-    if call_wall is not None:
-        ax.axvline(x=call_wall, linestyle='--', label='CALL WALL')
-
-    if put_wall is not None:
-        ax.axvline(x=put_wall, linestyle='--', label='PUT WALL')
-
-    if zero_gamma is not None:
-        ax.axvline(x=zero_gamma, linestyle='--', label='ZERO GAMMA')
-
-    ax.set_xlabel("Strike Price")
-    ax.set_ylabel("Gamma Exposure (GEX)")
-    ax.set_title(f"GEX Profile ({closest_expiration_date})")
-    ax.legend()
-    ax.grid(True)
-
+    ax.bar(df_top_abs["Strike"], df_top_abs["GEX"], color='blue')
+    ax.axhline(y=0, color="black", linestyle="--")
+    ax.set_title(f"Concentration GEX ({closest_expiration_date})")
     st.pyplot(fig)
 
     # --- Graphique Calls vs Puts ---
@@ -85,8 +72,6 @@ if uploaded_file is not None:
     ax2.bar(index - bar_width/2, df_top_components['GEX_Calls'], bar_width, label='GEX Calls', color='skyblue')
     ax2.bar(index + bar_width/2, df_top_components['GEX_Puts'], bar_width, label='GEX Puts', color='lightcoral')
     ax2.axhline(y=0, color='gray', linestyle='--')
-    ax2.set_xlabel("Strike Price")
-    ax2.set_ylabel("Gamma Exposure (GEX)")
     ax2.set_title(f"GEX Calls vs Puts ({closest_expiration_date})")
     ax2.legend()
     st.pyplot(fig2)
