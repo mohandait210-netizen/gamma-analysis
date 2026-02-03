@@ -52,7 +52,7 @@ if uploaded_file is not None:
     put_wall = df_gex_negative.loc[df_gex_negative['GEX'].idxmin()]['Strike'] if not df_gex_negative.empty else 'N/A'
 
     # --- Graphique GEX en courbe ---
-    top_n = st.slider("Nombre de strikes dominants", 5, 50, 10)
+    top_n = st.slider("Nombre de strikes dominants", 5, 50, 50)
     df_top_abs = df_gex.nlargest(top_n, 'ABS')
 
     # ✅ CORRECTION UNIQUE : trier par Strike pour une courbe correcte
