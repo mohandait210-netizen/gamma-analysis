@@ -51,23 +51,28 @@ if uploaded_file is not None:
     df_gex_negative = df_gex[df_gex['GEX'] < 0]
     put_wall = df_gex_negative.loc[df_gex_negative['GEX'].idxmin()]['Strike'] if not df_gex_negative.empty else 'N/A'
 
-   # Graphique GEX
-plt.figure(figsize=(12, 6))
-plt.plot(df_plot["Strike"], df_plot["GEX"], marker='o', linestyle='-', color='blue', label='GEX')
-plt.xlabel("Strike Price")
-plt.ylabel("Gamma Exposure (GEX)")
-plt.title(f"Courbe de Gamma Exposure (GEX) par Strike pour la date d'expiration la plus proche ({closest_expiration_date})")
-plt.grid(True)
+    # --- Graphique GEX en courbe ---
+    top_n = st.slider("Nombre de strikes dominants", 5, 30, 10)
+    df_top_abs = df_gex.nlargest(top_n, 'ABS')
 
-# Ajuster les ticks de l'axe X pour une meilleure lisibilité
-if len(df_plot) > 20:
-    tick_interval = max(1, len(df_plot) // 10)
-    plt.xticks(df_plot["Strike"].iloc[::tick_interval], rotation=45)
-else:
-    plt.xticks(df_plot["Strike"], rotation=45)
+    fig, ax = plt.subplots(figsize=(12,6))
+    ax.plot(df_top_abs["Strike"], df_top_abs["GEX"], marker='o', linestyle='-', color='blue', label='GEX')
+    ax.axhline(y=0, color="blue", linestyle="--", linewidth=2)
 
-plt.axhline(y=0, color="blue", linestyle="--", linewidth=2) # L'axe de 0 en bleu et plus épais
+    # Lignes verticales
+    if isinstance(call_wall, (int, float)):
+        ax.axvline(x=call_wall, color='green', linestyle='--', linewidth=2, label='CALL_WALL')
+    if isinstance(put_wall, (int, float)):
+        ax.axvline(x=put_wall, color='red', linestyle='--', linewidth=2, label='PUT_WALL')
+    if zero_gamma is not None and isinstance(zero_gamma, (int, float)):
+        ax.axvline(x=zero_gamma, color='orange', linestyle='--', linewidth=2, label='ZERO GAMMA')
 
+    ax.set_xlabel("Strike Price")
+    ax.set_ylabel("Gamma Exposure (GEX)")
+    ax.set_title(f"Courbe de Gamma Exposure (GEX) ({closest_expiration_date})")
+    ax.legend()
+    ax.grid(True)
+    st.pyplot(fig)
 
     # --- Graphique Calls vs Puts ---
     df_gex_components_grouped = df_filtered[['Strike','GEX_Calls','GEX_Puts']].dropna().copy()
