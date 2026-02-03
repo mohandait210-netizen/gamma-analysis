@@ -121,3 +121,31 @@ if uploaded_file is not None:
         value=copy_text,
         height=120
     )
+    
+    # --- Saisie utilisateur pour un strike ---
+strike_input = st.number_input("Entrez un strike :", min_value=0, step=1)
+
+if strike_input > 0:
+    # Filtrer sur le strike choisi
+    df_strike = df_filtered[df_filtered["Strike"] == strike_input]
+
+    if not df_strike.empty:
+        # Récupérer les valeurs Last Sale Call et Put
+        last_sale_call = df_strike["Last Sale"].iloc[0] if "Last Sale" in df_strike.columns else None
+        last_sale_put = df_strike["Last Sale.1"].iloc[0] if "Last Sale.1" in df_strike.columns else None
+
+        # Calculer la somme
+        total_last_sale = None
+        if last_sale_call is not None and last_sale_put is not None:
+            total_last_sale = last_sale_call + last_sale_put
+
+        # Affichage
+        st.write(f"### Résultats pour le strike {strike_input} ({closest_expiration_date})")
+        st.write(f"- **Last Sale Call** : {last_sale_call}")
+        st.write(f"- **Last Sale Put** : {last_sale_put}")
+        if total_last_sale is not None:
+            st.success(f"👉 Somme Call + Put = {total_last_sale}")
+    else:
+        st.warning(f"Aucune donnée trouvée pour le strike {strike_input} à la date {closest_expiration_date}.")
+
+    
