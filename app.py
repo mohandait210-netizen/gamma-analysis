@@ -108,9 +108,8 @@ top_gex_strikes = df_gex.nlargest(4, 'ABS')['Strike'].tolist()
 while len(top_gex_strikes) < 4:
     top_gex_strikes.append("0000")
 
-copy_text = f"$QQQ, QQQ, {call_wall}, {put_wall}, {round(zero_gamma,2) if zero_gamma else 'N/A', " \
-            f"{top_gex_strikes[0]}, {top_gex_strikes[1]}, {top_gex_strikes[2]}, {top_gex_strikes[3]}, " \
-            f"0000, 0000, 0000, 0000, 0000, 0000},"
+copy_text = f"$QQQ, QQQ, {call_wall}, {put_wall}, {round(zero_gamma,2) if zero_gamma else 'N/A'}, " \
+            f"{top_gex_strikes[0]}, {top_gex_strikes[1]}, {top_gex_strikes[2]}, {top_gex_strikes[3]},"
 
 st.text_area(
     "Texte copiable",
