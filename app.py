@@ -113,7 +113,7 @@ if uploaded_file is not None:
     while len(top_gex_strikes) < 4:
         top_gex_strikes.append("0000")
 
-    copy_text = f"$QQQ, QQQ, {call_wall}, {put_wall}, {round(zero_gamma,2) if zero_gamma else 'N/A'}, " \
+    copy_text = f"{call_wall}, {put_wall}, {round(zero_gamma,2) if zero_gamma else 'N/A'}, " \
                 f"{top_gex_strikes[0]}, {top_gex_strikes[1]},"
 
     st.text_area(
