@@ -6,96 +6,164 @@ from datetime import datetime
 
 st.title("📊 Analyse Gamma Exposure (GEX)")
 
-# Étape 1 : Upload du fichier CSV
-uploaded_file = st.file_uploader("Téléverse ton fichier CSV", type=["csv"])
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file, delimiter=",", header=2)
+# -------- CACHE (important pour performance) --------
+@st.cache_data
+def load_data(file):
+    return pd.read_csv(file, delimiter=",", header=2)
 
-    # Étape 2 : Date actuelle
+uploaded_file = st.file_uploader("Téléverse ton fichier CSV", type=["csv"])
+
+if uploaded_file is not None:
+
+    df = load_data(uploaded_file)
+
+    # -------- Spot price (version institutionnelle) --------
+    spot = st.number_input("Spot price", value=500.0)
+
+    # -------- Date actuelle --------
     current_date_dt = pd.to_datetime(datetime.now().date())
 
-    # Étape 3 : Conversion des dates
+    # -------- Conversion dates --------
     df['Expiration Date_dt'] = pd.to_datetime(df['Expiration Date'], errors='coerce')
     unique_expiration_dates = df['Expiration Date_dt'].dropna().unique()
-    closest_expiration_date_dt = min(unique_expiration_dates, key=lambda d: abs(d - current_date_dt))
+
+    closest_expiration_date_dt = min(
+        unique_expiration_dates,
+        key=lambda d: abs(d - current_date_dt)
+    )
+
     closest_expiration_date = closest_expiration_date_dt.strftime('%a %b %d %Y')
 
-    # Étape 4 : Filtrer
+    # -------- Filtrer --------
     df_filtered = df[df['Expiration Date_dt'] == closest_expiration_date_dt].copy()
 
-    # Étape 5 : Calculs Gamma
-    for col in ["Gamma","Open Interest","Gamma.1","Open Interest.1"]:
+    # -------- Convertir colonnes --------
+    for col in ["Gamma","Open Interest","Gamma.1","Open Interest.1","Strike"]:
         df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce')
 
-    df_filtered["GEX_Calls"] = df_filtered["Gamma"]*df_filtered["Open Interest"]*(df_filtered["Strike"]**2)*100
-    df_filtered["GEX_Puts"] = df_filtered["Gamma.1"]*df_filtered["Open Interest.1"]*(df_filtered["Strike"]**2)*100*-1
-    df_filtered["GEX_Total"] = df_filtered["GEX_Calls"]+df_filtered["GEX_Puts"]
-    df_filtered["ABS_Total"] = abs(df_filtered["GEX_Calls"])+abs(df_filtered["GEX_Puts"])
+    df_filtered.dropna(subset=["Strike"], inplace=True)
+
+    # -------- Calcul GEX (formule PRO basée sur Spot) --------
+    df_filtered["GEX_Calls"] = (
+        df_filtered["Gamma"] *
+        df_filtered["Open Interest"] *
+        (spot**2) * 0.01 * 100
+    )
+
+    df_filtered["GEX_Puts"] = (
+        df_filtered["Gamma.1"] *
+        df_filtered["Open Interest.1"] *
+        (spot**2) * 0.01 * 100 * -1
+    )
+
+    df_filtered["GEX_Total"] = df_filtered["GEX_Calls"] + df_filtered["GEX_Puts"]
+    df_filtered["ABS_Total"] = abs(df_filtered["GEX_Calls"]) + abs(df_filtered["GEX_Puts"])
 
     df_gex = df_filtered.groupby("Strike")[["GEX_Total","ABS_Total"]].sum().reset_index()
     df_gex.rename(columns={"GEX_Total":"GEX","ABS_Total":"ABS"}, inplace=True)
 
-    # Calculs supplémentaires
     net_gex = df_gex['GEX'].sum()
-    df_gex_sorted = df_gex.sort_values("Strike")
+
+    # -------- ZERO GAMMA (corrigé) --------
     zero_gamma = None
-    if df_gex_sorted["GEX"].min() < 0 < df_gex_sorted["GEX"].max():
-        zero_gamma = np.interp(0, df_gex_sorted["GEX"], df_gex_sorted["Strike"])
+    df_zero = df_gex.sort_values("GEX")
 
-    max_abs_strike_row = df_gex.loc[df_gex['ABS'].idxmax()]
-    max_abs_strike = max_abs_strike_row['Strike']
+    if df_zero["GEX"].min() < 0 < df_zero["GEX"].max():
+        zero_gamma = np.interp(
+            0,
+            df_zero["GEX"],
+            df_zero["Strike"]
+        )
 
-    df_gex_positive = df_gex[df_gex['GEX'] > 0]
-    call_wall = df_gex_positive.loc[df_gex_positive['GEX'].idxmax()]['Strike'] if not df_gex_positive.empty else 'N/A'
+    # -------- Walls sécurisées --------
+    call_wall = None
+    put_wall = None
 
-    df_gex_negative = df_gex[df_gex['GEX'] < 0]
-    put_wall = df_gex_negative.loc[df_gex_negative['GEX'].idxmin()]['Strike'] if not df_gex_negative.empty else 'N/A'
+    df_positive = df_gex[df_gex['GEX'] > 0]
+    if not df_positive.empty:
+        call_wall = df_positive.loc[df_positive['GEX'].idxmax(),'Strike']
 
-    # --- Graphique GEX en courbe avec lignes verticales ---
-    top_n = st.slider("Nombre de strikes dominants", 5, 30, 10)
-    df_top_abs = df_gex.nlargest(top_n, 'ABS')
+    df_negative = df_gex[df_gex['GEX'] < 0]
+    if not df_negative.empty:
+        put_wall = df_negative.loc[df_negative['GEX'].idxmin(),'Strike']
 
+    max_abs_strike = df_gex.loc[df_gex['ABS'].idxmax(),'Strike']
+
+    # -------- Gamma Flip Distance --------
+    flip_distance = None
+    if zero_gamma is not None:
+        flip_distance = ((zero_gamma - spot) / spot) * 100
+
+    # -------- CUMULATIVE GAMMA --------
+    df_gex_sorted = df_gex.sort_values("Strike")
+    df_gex_sorted["CumGEX"] = df_gex_sorted["GEX"].cumsum()
+
+    # -------- Choix affichage --------
+    show_full = st.checkbox("Afficher tout le Gamma Profile")
+    top_n = st.slider("Nombre de strikes dominants", 5, 40, 15)
+
+    if show_full:
+        plot_df = df_gex_sorted
+    else:
+        plot_df = df_gex.nlargest(top_n, 'ABS').sort_values("Strike")
+
+    # -------- Graphique GEX --------
     fig, ax = plt.subplots(figsize=(12,6))
-    ax.plot(df_top_abs["Strike"], df_top_abs["GEX"], marker='o', linestyle='-', color='blue', label='GEX')
-    ax.axhline(y=0, color="black", linestyle="--", linewidth=1)
 
-    # Lignes verticales
-    if isinstance(call_wall, (int, float)):
-        ax.axvline(x=call_wall, color='green', linestyle='--', linewidth=2, label='CALL_WALL')
-    if isinstance(put_wall, (int, float)):
-        ax.axvline(x=put_wall, color='red', linestyle='--', linewidth=2, label='PUT_WALL')
-    if zero_gamma is not None and isinstance(zero_gamma, (int, float)):
-        ax.axvline(x=zero_gamma, color='orange', linestyle='--', linewidth=2, label='ZERO GAMMA')
+    ax.plot(plot_df["Strike"], plot_df["GEX"], marker='o')
+    ax.axhline(y=0, linestyle="--")
+
+    if call_wall is not None:
+        ax.axvline(x=call_wall, linestyle='--', label='CALL WALL')
+
+    if put_wall is not None:
+        ax.axvline(x=put_wall, linestyle='--', label='PUT WALL')
+
+    if zero_gamma is not None:
+        ax.axvline(x=zero_gamma, linestyle='--', label='ZERO GAMMA')
 
     ax.set_xlabel("Strike Price")
     ax.set_ylabel("Gamma Exposure (GEX)")
-    ax.set_title(f"Courbe de concentration GEX ({closest_expiration_date})")
+    ax.set_title(f"GEX Profile ({closest_expiration_date})")
     ax.legend()
     ax.grid(True)
+
     st.pyplot(fig)
 
-    # --- Graphique Calls vs Puts ---
-    df_gex_components_grouped = df_filtered[['Strike','GEX_Calls','GEX_Puts']].dropna().copy()
-    df_gex_components_grouped = df_gex_components_grouped.groupby('Strike')[['GEX_Calls','GEX_Puts']].sum().reset_index()
-    df_top_components = df_gex_components_grouped[df_gex_components_grouped['Strike'].isin(df_top_abs['Strike'])]
+    # -------- Graphique Cumulative Gamma --------
+    st.subheader("Cumulative Gamma")
 
-    fig2, ax2 = plt.subplots(figsize=(14,7))
-    bar_width = 0.4
-    index = df_top_components['Strike']
-    ax2.bar(index - bar_width/2, df_top_components['GEX_Calls'], bar_width, label='GEX Calls', color='skyblue')
-    ax2.bar(index + bar_width/2, df_top_components['GEX_Puts'], bar_width, label='GEX Puts', color='lightcoral')
-    ax2.axhline(y=0, color='gray', linestyle='--')
-    ax2.set_xlabel("Strike Price")
-    ax2.set_ylabel("Gamma Exposure (GEX)")
-    ax2.set_title(f"GEX Calls vs Puts ({closest_expiration_date})")
-    ax2.legend()
+    fig2, ax2 = plt.subplots(figsize=(12,6))
+    ax2.plot(df_gex_sorted["Strike"], df_gex_sorted["CumGEX"])
+    ax2.axhline(y=0, linestyle="--")
+
+    ax2.set_xlabel("Strike")
+    ax2.set_ylabel("Cumulative GEX")
+    ax2.grid(True)
+
     st.pyplot(fig2)
 
-    # --- Résumé ---
+    # -------- Résumé --------
     summary_data = {
-        'Metric': ['NET_GEX','Max ABS Strike','CALL_WALL','PUT_WALL','ZERO GAMMA'],
-        'Value': [f"{net_gex:.2e}", max_abs_strike, call_wall, put_wall, round(zero_gamma,2) if zero_gamma else 'N/A']
+        'Metric': [
+            'NET_GEX',
+            'Max ABS Strike',
+            'CALL_WALL',
+            'PUT_WALL',
+            'ZERO_GAMMA',
+            'Gamma Flip Distance (%)'
+        ],
+        'Value': [
+            f"{net_gex:.2e}",
+            max_abs_strike,
+            call_wall if call_wall else "N/A",
+            put_wall if put_wall else "N/A",
+            round(zero_gamma,2) if zero_gamma else "N/A",
+            round(flip_distance,2) if flip_distance else "N/A"
+        ]
     }
+
     df_summary = pd.DataFrame(summary_data)
+
     st.write("### 📊 Résumé de l'analyse Gamma")
     st.dataframe(df_summary)
