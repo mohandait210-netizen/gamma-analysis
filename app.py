@@ -55,6 +55,9 @@ if uploaded_file is not None:
     top_n = st.slider("Nombre de strikes dominants", 5, 30, 10)
     df_top_abs = df_gex.nlargest(top_n, 'ABS')
 
+    # ✅ CORRECTION UNIQUE : trier par Strike pour une courbe correcte
+    df_top_abs = df_top_abs.sort_values("Strike")
+
     fig, ax = plt.subplots(figsize=(12,6))
     ax.plot(df_top_abs["Strike"], df_top_abs["GEX"], marker='o', linestyle='-', color='blue', label='GEX')
     ax.axhline(y=0, color="blue", linestyle="--", linewidth=2)
