@@ -101,27 +101,6 @@ if uploaded_file is not None:
     st.write("### 📊 Résumé de l'analyse Gamma")
     st.dataframe(df_summary)
     
-# --- Texte copiable ---
-    top_gex_strikes = (
-        df_gex
-        .sort_values("ABS", ascending=False)
-        ["Strike"]
-        .head(4)
-        .tolist()
-    )
-
-    while len(top_gex_strikes) < 4:
-        top_gex_strikes.append("0000")
-
-    copy_text = f"{call_wall}, {put_wall}, {round(zero_gamma,2) if zero_gamma else 'N/A'}, " \
-                f"{top_gex_strikes[0]}, {top_gex_strikes[1]}, {top_gex_strikes[2]},"
-
-    st.text_area(
-        "Texte copiable",
-        value=copy_text,
-        height=120
-    )
-    
     # --- Saisie utilisateur pour un strike et somme Last Sale ---
     strike_input = st.number_input("Entrez un strike :", min_value=0, step=1)
     if strike_input > 0:
@@ -143,3 +122,24 @@ if uploaded_file is not None:
                 st.warning("Colonnes Last Sale manquantes dans le fichier CSV.")
         else:
             st.warning(f"Aucune donnée trouvée pour le strike {strike_input} à la date {closest_expiration_date}.")
+            
+            # --- Texte copiable ---
+    top_gex_strikes = (
+        df_gex
+        .sort_values("ABS", ascending=False)
+        ["Strike"]
+        .head(4)
+        .tolist()
+    )
+
+    while len(top_gex_strikes) < 4:
+        top_gex_strikes.append("0000")
+
+    copy_text = f"{call_wall}, {put_wall}, {round(zero_gamma,2) if zero_gamma else 'N/A'}, " \
+                f"{top_gex_strikes[0]}, {top_gex_strikes[1]}, {top_gex_strikes[2]}, {EM+}, {EM-},"
+
+    st.text_area(
+        "Texte copiable",
+        value=copy_text,
+        height=120
+    )
