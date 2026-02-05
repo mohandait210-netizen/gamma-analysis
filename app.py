@@ -90,6 +90,7 @@ if uploaded_file is not None:
     ax2.axhline(y=0, color='gray', linestyle='--')
     ax2.set_title(f"GEX Calls vs Puts ({closest_expiration_date})")
     ax2.legend()
+    ax.grid(True)
     st.pyplot(fig2)
 
     # --- Résumé ---
