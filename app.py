@@ -133,7 +133,7 @@ if uploaded_file is not None:
         .tolist()
     )
 
-    while len(top_gex_strikes) < 4:
+    while len(top_gex_strikes) < 6:
         top_gex_strikes.append("0000")
 
     copy_text = f"{call_wall}, {put_wall}, {round(zero_gamma,2) if zero_gamma else 'N/A'}, {em_plus}, {em_minus}, " \
