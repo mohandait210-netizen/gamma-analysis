@@ -137,7 +137,7 @@ if uploaded_file is not None:
         top_gex_strikes.append("0000")
 
     copy_text = f"{call_wall}, {put_wall}, {round(zero_gamma,2) if zero_gamma else 'N/A'}, {em_plus}, {em_minus}, " \
-                f"{top_gex_strikes[0]}, {top_gex_strikes[1]}, {top_gex_strikes[2]}, {top_gex_strikes[3]}, {top_gex_strikes[4]},"
+                f"{top_gex_strikes[0]}, {top_gex_strikes[1]}, {top_gex_strikes[2]}, {top_gex_strikes[3]},"
 
     st.text_area(
         "Texte copiable",
