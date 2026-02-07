@@ -160,7 +160,7 @@ if uploaded_file is not None:
     # --- Multiplication x41.25 ---
     def safe_multiply(val):
         try:
-            return round(float(val) * 41.25, 2)
+            return round(float(val) * 41.25, 0)
         except:
             return val
 
