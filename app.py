@@ -156,5 +156,4 @@ if uploaded_file is not None:
         safe_multiply(em_minus),
         safe_multiply(top_gex_strikes[0]),
         safe_multiply(top_gex_strikes[1]),
-        safe_multiply(top_gex_strikes[2]),
-        safe_multiply(top
+        safe_multiply(top_gex_str
