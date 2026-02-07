@@ -144,3 +144,28 @@ if uploaded_file is not None:
         value=copy_text,
         height=120
     )
+
+    # --- Nouveau texte copiable : strikes multipliés par 41.25 ---
+    def safe_multiply(val): 
+        try:
+            return round(float(val) * 41.25, 2) 
+        except: 
+            return val
+            
+        multiplied_strikes = [ 
+            safe_multiply(call_wall),
+            safe_multiply(put_wall),
+            safe_multiply(zero_gamma if zero_gamma else 0), 
+            safe_multiply(em_plus), safe_multiply(em_minus),
+            safe_multiply(top_gex_strikes[0]), 
+            safe_multiply(top_gex_strikes[1]), 
+            safe_multiply(top_gex_strikes[2]),
+            safe_multiply(top_gex_strikes[3]) 
+        ]
+        
+            copy_text_multiplied = ", ".join(map(str, multiplied_strikes)) + ","
+            st.text_area(
+                "Texte copiable (strikes × 41.25)",
+                value=copy_text_multiplied, 
+                height=120 
+        )
