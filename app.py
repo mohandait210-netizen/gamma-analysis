@@ -157,27 +157,34 @@ if uploaded_file is not None:
         height=120
     )
 
-    # --- Multiplication x41.25 ---
+     # -------- SECOND TEXTE : ENTIER UNIQUEMENT --------
+
     def safe_multiply(val):
         try:
             return round(float(val) * 41.25, 2)
         except:
             return val
 
+    def to_int(val):
+        try:
+            return int(round(float(val)))
+        except:
+            return val
+
     multiplied_strikes = [
-        safe_multiply(call_wall),
-        safe_multiply(put_wall),
-        safe_multiply(zero_gamma if zero_gamma else 0),
-        safe_multiply(top_gex_strikes[0]),
-        safe_multiply(top_gex_strikes[1]),
-        safe_multiply(top_gex_strikes[2]),
-        safe_multiply(top_gex_strikes[3]),
+        to_int(safe_multiply(call_wall)),
+        to_int(safe_multiply(put_wall)),
+        to_int(safe_multiply(zero_gamma if zero_gamma else 0)),
+        to_int(safe_multiply(top_gex_strikes[0])),
+        to_int(safe_multiply(top_gex_strikes[1])),
+        to_int(safe_multiply(top_gex_strikes[2])),
+        to_int(safe_multiply(top_gex_strikes[3])),
     ]
 
-    multiplied_text = ", ".join(str(x) for x in multiplied_strikes) + ","
+    multiplied_text = ", ".join(map(str, multiplied_strikes))
 
     st.text_area(
-        "Texte copiable (strikes x41.25)",
+        "Texte copiable (strikes multipliés - entiers)",
         value=multiplied_text,
         height=120
     )
