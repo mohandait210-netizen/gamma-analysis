@@ -99,12 +99,8 @@ if uploaded_file is not None:
     st.write("### 📊 Résumé de l'analyse Gamma")
     st.dataframe(df_summary)
     
-    # --- Saisie utilisateur ---
+    # --- Saisie utilisateur pour un strike et somme Last Sale ---
     strike_input = st.number_input("Entrez un strike :", min_value=0, step=1)
-
-    em_plus = "0000"
-    em_minus = "0000"
-
     if strike_input > 0:
         df_strike = df_filtered[df_filtered["Strike"] == strike_input]
         if not df_strike.empty:
@@ -124,19 +120,7 @@ if uploaded_file is not None:
         else:
             st.warning(f"Aucune donnée trouvée pour le strike {strike_input} à la date {closest_expiration_date}.")
 
-    # --- Large Gamma (ABS) ---
-    top_gex_strikes = (
-        df_gex
-        .sort_values("ABS", ascending=False)
-        ["Strike"]
-        .head(4)
-        .tolist()
-    )
-
-    while len(top_gex_strikes) < 4:
-        top_gex_strikes.append("0000")
-
-     # --- Texte copiable ---
+    # --- Texte copiable original ---
     top_gex_strikes = (
         df_gex
         .sort_values("ABS", ascending=False)
@@ -152,34 +136,24 @@ if uploaded_file is not None:
                 f"{top_gex_strikes[0]}, {top_gex_strikes[1]}, {top_gex_strikes[2]}, {top_gex_strikes[3]},"
 
     st.text_area(
-        "Texte copiable",
+        "Texte copiable (strikes bruts)",
         value=copy_text,
         height=120
     )
 
-    # --- Multiplication x41.25 ---
+    # --- Nouveau texte copiable : strikes multipliés par 41.25 ---
     def safe_multiply(val):
-        tdef to_int(val):
-    try:
-        return int(round(float(val)))
-    except:
-        return val
-
+        try:
+            return round(float(val) * 41.25, 2)
+        except:
+            return val
 
     multiplied_strikes = [
         safe_multiply(call_wall),
         safe_multiply(put_wall),
         safe_multiply(zero_gamma if zero_gamma else 0),
+        safe_multiply(em_plus),
+        safe_multiply(em_minus),
         safe_multiply(top_gex_strikes[0]),
         safe_multiply(top_gex_strikes[1]),
-        safe_multiply(top_gex_strikes[2]),
-        safe_multiply(top_gex_strikes[3]),
-    ]
-
-    multiplied_text = ", ".join(str(x) for x in multiplied_strikes) + ","
-
-    st.text_area(
-        "Texte copiable (strikes x41.25)",
-        value=multiplied_text,
-        height=120
-    )
+        safe_multiply(top_gex_str
