@@ -54,15 +54,12 @@ if uploaded_file is not None:
     # --- Graphique GEX en courbe ---
     top_n = st.slider("Nombre de strikes dominants", 5, 50, 50)
     df_top_abs = df_gex.nlargest(top_n, 'ABS')
-
-    # ✅ CORRECTION UNIQUE : trier par Strike pour une courbe correcte
     df_top_abs = df_top_abs.sort_values("Strike")
 
     fig, ax = plt.subplots(figsize=(12,6))
     ax.plot(df_top_abs["Strike"], df_top_abs["GEX"], marker='o', linestyle='-', color='blue', label='GEX')
     ax.axhline(y=0, color="blue", linestyle="--", linewidth=2)
 
-    # Lignes verticales
     if isinstance(call_wall, (int, float)):
         ax.axvline(x=call_wall, color='green', linestyle='--', linewidth=2, label='CALL_WALL')
     if isinstance(put_wall, (int, float)):
@@ -90,7 +87,7 @@ if uploaded_file is not None:
     ax2.axhline(y=0, color='gray', linestyle='--')
     ax2.set_title(f"GEX Calls vs Puts ({closest_expiration_date})")
     ax2.legend()
-    ax.grid(True)
+    ax2.grid(True)
     st.pyplot(fig2)
 
     # --- Résumé ---
@@ -113,7 +110,6 @@ if uploaded_file is not None:
                 total_last_sale = last_sale_call + last_sale_put
                 st.success(f"👉 Somme Last Sale Call + Put pour le strike {strike_input} = {total_last_sale}")
 
-                # ✅ Ajout : calcul EM+ et EM-
                 em_plus = strike_input + total_last_sale
                 em_minus = strike_input - total_last_sale
 
@@ -123,8 +119,8 @@ if uploaded_file is not None:
                 st.warning("Colonnes Last Sale manquantes dans le fichier CSV.")
         else:
             st.warning(f"Aucune donnée trouvée pour le strike {strike_input} à la date {closest_expiration_date}.")
-            
-            # --- Texte copiable ---
+
+    # --- Texte copiable original ---
     top_gex_strikes = (
         df_gex
         .sort_values("ABS", ascending=False)
@@ -140,32 +136,25 @@ if uploaded_file is not None:
                 f"{top_gex_strikes[0]}, {top_gex_strikes[1]}, {top_gex_strikes[2]}, {top_gex_strikes[3]},"
 
     st.text_area(
-        "Texte copiable",
+        "Texte copiable (strikes bruts)",
         value=copy_text,
         height=120
     )
 
     # --- Nouveau texte copiable : strikes multipliés par 41.25 ---
-    def safe_multiply(val): 
+    def safe_multiply(val):
         try:
-            return round(float(val) * 41.25, 2) 
-        except: 
+            return round(float(val) * 41.25, 2)
+        except:
             return val
-            
-        multiplied_strikes = [ 
-            safe_multiply(call_wall),
-            safe_multiply(put_wall),
-            safe_multiply(zero_gamma if zero_gamma else 0), 
-            safe_multiply(em_plus), safe_multiply(em_minus),
-            safe_multiply(top_gex_strikes[0]), 
-            safe_multiply(top_gex_strikes[1]), 
-            safe_multiply(top_gex_strikes[2]),
-            safe_multiply(top_gex_strikes[3]) 
-        ]
-        
-            copy_text_multiplied = ", ".join(map(str, multiplied_strikes)) + ","
-            st.text_area(
-                "Texte copiable (strikes × 41.25)",
-                value=copy_text_multiplied, 
-                height=120 
-        )
+
+    multiplied_strikes = [
+        safe_multiply(call_wall),
+        safe_multiply(put_wall),
+        safe_multiply(zero_gamma if zero_gamma else 0),
+        safe_multiply(em_plus),
+        safe_multiply(em_minus),
+        safe_multiply(top_gex_strikes[0]),
+        safe_multiply(top_gex_strikes[1]),
+        safe_multiply(top_gex_strikes[2]),
+        safe_multiply(top
