@@ -160,13 +160,11 @@ if uploaded_file is not None:
     # --- Multiplication x41.25 ---
     def safe_multiply(val):
         try:
-            return float(val) * 41.25
-            if result.is_integer():
-                return int(result)
-                else:
-                    return round(result, 2)
-        except:
-            return val
+          def to_int(val):
+    try:
+        return int(round(float(val)))
+    except:
+        return val
 
     multiplied_strikes = [
         safe_multiply(call_wall),
