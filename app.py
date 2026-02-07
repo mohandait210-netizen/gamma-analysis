@@ -174,9 +174,9 @@ if uploaded_file is not None:
     multiplied_strikes = [
         to_int(safe_multiply(call_wall)),
         to_int(safe_multiply(put_wall)),
+        to_int(safe_multiply(zero_gamma if zero_gamma else 0)),
         to_int(safe_multiply(em_plus)),
         to_int(safe_multiply(em_minus)),
-        to_int(safe_multiply(zero_gamma if zero_gamma else 0)),
         to_int(safe_multiply(top_gex_strikes[0])),
         to_int(safe_multiply(top_gex_strikes[1])),
         to_int(safe_multiply(top_gex_strikes[2])),
