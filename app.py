@@ -161,7 +161,7 @@ if uploaded_file is not None:
 
     def safe_multiply(val):
         try:
-            return round(float(val) + 70, 2)
+            return round(float(val) + 69, 2)
         except:
             return val
 
