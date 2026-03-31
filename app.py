@@ -51,6 +51,12 @@ if uploaded_file is not None:
     df_gex_negative = df_gex[df_gex['GEX'] < 0]
     put_wall = df_gex_negative.loc[df_gex_negative['GEX'].idxmin()]['Strike'] if not df_gex_negative.empty else 'N/A'
 
+    # ===== NET GEX & REGIME =====
+    net_gex = df_gex["GEX"].sum()
+    gamma_regime = "🟢 Positive Gamma (Market pinned)" if net_gex > 0 else "🔴 Negative Gamma (Volatile)"
+
+    st.info(gamma_regime)
+
     # --- Graphique GEX en courbe ---
     top_n = st.slider("Nombre de strikes dominants", 5, 50, 50)
     df_top_abs = df_gex.nlargest(top_n, 'ABS')
