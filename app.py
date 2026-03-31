@@ -93,15 +93,20 @@ if uploaded_file is not None:
     ax.grid(True)
     st.pyplot(fig)
 
-    # ===== GRAPHE DEX =====
-    fig_dex, ax_dex = plt.subplots(figsize=(12,6))
-    ax_dex.plot(df_dex["Strike"], df_dex["DEX_Total"], marker='o')
-    ax_dex.axhline(y=0, linestyle="--")
-    ax_dex.axvline(x=delta_magnet, linestyle='--', label='DELTA MAGNET')
-    ax_dex.set_title(f"Delta Exposure (DEX) ({closest_expiration_date})")
-    ax_dex.legend()
-    ax_dex.grid(True)
-    st.pyplot(fig_dex)
+    
+    # --- Graphique DEX en courbe ---
+    top_n = st.slider("Nombre de strikes dominants", 5, 50, 50)
+   
+    fig, ax = plt.subplots(figsize=(12,6))
+    ax.plot(df_dex["Strike"], df_dex["DEX"], marker='o', linestyle='-', color='blue', label='DEX')
+    ax.axhline(y=0, color="blue", linestyle="--", linewidth=2)
+
+    ax.set_xlabel("Strike Price")
+    ax.set_ylabel("Delta Exposure (DEX)")
+    ax.set_title(f"Courbe de Delta Exposure (DEX) ({closest_expiration_date})")
+    ax.legend()
+    ax.grid(True)
+    st.pyplot(fig)
 
     # --- Graphique Calls vs Puts ---
     df_gex_components_grouped = df_filtered[['Strike','GEX_Calls','GEX_Puts']].dropna().copy()
