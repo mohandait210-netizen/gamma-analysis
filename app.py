@@ -35,17 +35,13 @@ if uploaded_file is not None:
     df_gex = df_filtered.groupby("Strike")[["GEX_Total","ABS_Total"]].sum().reset_index()
     df_gex.rename(columns={"GEX_Total":"GEX","ABS_Total":"ABS"}, inplace=True)
 
-    # ===== DEX CALCUL =====
-    df_filtered["DEX_Calls"] = df_filtered["Delta"] * df_filtered["Open Interest"] * 100 * spot
-    df_filtered["DEX_Puts"]  = df_filtered["Delta.1"] * df_filtered["Open Interest.1"] * 100 * spot * -1
-
-    df_filtered["DEX_Total"] = df_filtered["DEX_Calls"] + df_filtered["DEX_Puts"]
- # Étape 5 : Calculs delta
-    for col in ["delta","Open Interest","delta.1","Open Interest.1"]:
+   
+ # Étape 5 : Calculs Delta
+    for col in ["delta","Open Interest","Delta.1","Open Interest.1"]:
         df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce')
 
-    df_filtered["DEX_Calls"] = df_filtered["delta"]*df_filtered["Open Interest"]*(df_filtered["Strike"]**2)*100
-    df_filtered["DEX_Puts"] = df_filtered["delta.1"]*df_filtered["Open Interest.1"]*(df_filtered["Strike"]**2)*100*-1
+    df_filtered["DEX_Calls"] = df_filtered["Delta"]*df_filtered["Open Interest"]*(df_filtered["Strike"]**2)*100
+    df_filtered["DEX_Puts"] = df_filtered["Delta.1"]*df_filtered["Open Interest.1"]*(df_filtered["Strike"]**2)*100*-1
     df_filtered["DEX_Total"] = df_filtered["DEX_Calls"]+df_filtered["DEX_Puts"]
     df_filtered["DEX_Total"] = abs(df_filtered["DEX_Calls"])+abs(df_filtered["DEX_Puts"])
 
