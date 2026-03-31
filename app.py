@@ -35,6 +35,17 @@ if uploaded_file is not None:
     df_gex = df_filtered.groupby("Strike")[["GEX_Total","ABS_Total"]].sum().reset_index()
     df_gex.rename(columns={"GEX_Total":"GEX","ABS_Total":"ABS"}, inplace=True)
 
+    # ===== DEX CALCUL =====
+    df_filtered["DEX_Calls"] = df_filtered["Delta"] * df_filtered["Open Interest"] * 100 * spot
+    df_filtered["DEX_Puts"]  = df_filtered["Delta.1"] * df_filtered["Open Interest.1"] * 100 * spot * -1
+
+    df_filtered["DEX_Total"] = df_filtered["DEX_Calls"] + df_filtered["DEX_Puts"]
+
+    # ===== DELTA MAGNET =====
+    delta_magnet_row = df_dex.loc[df_dex["DEX_Total"].abs().idxmax()]
+    delta_magnet = delta_magnet_row["Strike"]
+
+
     # Calculs supplémentaires
     net_gex = df_gex['GEX'].sum()
     df_gex_sorted = df_gex.sort_values("Strike")
@@ -80,6 +91,16 @@ if uploaded_file is not None:
     ax.grid(True)
     st.pyplot(fig)
 
+    # ===== GRAPHE DEX =====
+    fig_dex, ax_dex = plt.subplots(figsize=(12,6))
+    ax_dex.plot(df_dex["Strike"], df_dex["DEX_Total"], marker='o')
+    ax_dex.axhline(y=0, linestyle="--")
+    ax_dex.axvline(x=delta_magnet, linestyle='--', label='DELTA MAGNET')
+    ax_dex.set_title(f"Delta Exposure (DEX) ({closest_expiration_date})")
+    ax_dex.legend()
+    ax_dex.grid(True)
+    st.pyplot(fig_dex)
+
     # --- Graphique Calls vs Puts ---
     df_gex_components_grouped = df_filtered[['Strike','GEX_Calls','GEX_Puts']].dropna().copy()
     df_gex_components_grouped = df_gex_components_grouped.groupby('Strike')[['GEX_Calls','GEX_Puts']].sum().reset_index()
@@ -98,7 +119,7 @@ if uploaded_file is not None:
 
     # --- Résumé ---
     summary_data = {
-        'Metric': ['NET_GEX','Max ABS Strike','CALL_WALL','PUT_WALL','ZERO GAMMA'],
+        'Metric': ['NET_GEX','Max ABS Strike','CALL_WALL','PUT_WALL','ZERO GAMMA','DELTA_MAGNET'],
         'Value': [f"{net_gex:.2e}", max_abs_strike, call_wall, put_wall, round(zero_gamma,2) if zero_gamma else 'N/A']
     }
     df_summary = pd.DataFrame(summary_data)
