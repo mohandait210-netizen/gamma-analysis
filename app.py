@@ -35,6 +35,13 @@ if uploaded_file is not None:
     df_gex = df_filtered.groupby("Strike")[["GEX_Total","ABS_Total"]].sum().reset_index()
     df_gex.rename(columns={"GEX_Total":"GEX","ABS_Total":"ABS"}, inplace=True)
 
+    # ===== NET GEX & REGIME =====
+    net_gex = df_gex["GEX"].sum()
+    gamma_regime = "🟢 Positive Gamma (Market pinned)" if net_gex > 0 else "🔴 Negative Gamma (Volatile)"
+
+    st.info(gamma_regime)
+
+
     # Calculs supplémentaires
     net_gex = df_gex['GEX'].sum()
     df_gex_sorted = df_gex.sort_values("Strike")
