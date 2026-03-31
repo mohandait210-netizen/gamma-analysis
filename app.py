@@ -40,11 +40,17 @@ if uploaded_file is not None:
     df_filtered["DEX_Puts"]  = df_filtered["Delta.1"] * df_filtered["Open Interest.1"] * 100 * spot * -1
 
     df_filtered["DEX_Total"] = df_filtered["DEX_Calls"] + df_filtered["DEX_Puts"]
+ # Étape 5 : Calculs delta
+    for col in ["delta","Open Interest","delta.1","Open Interest.1"]:
+        df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce')
 
-    # ===== DELTA MAGNET =====
-    delta_magnet_row = df_dex.loc[df_dex["DEX_Total"].abs().idxmax()]
-    delta_magnet = delta_magnet_row["Strike"]
+    df_filtered["DEX_Calls"] = df_filtered["delta"]*df_filtered["Open Interest"]*(df_filtered["Strike"]**2)*100
+    df_filtered["DEX_Puts"] = df_filtered["delta.1"]*df_filtered["Open Interest.1"]*(df_filtered["Strike"]**2)*100*-1
+    df_filtered["DEX_Total"] = df_filtered["DEX_Calls"]+df_filtered["DEX_Puts"]
+    df_filtered["DEX_Total"] = abs(df_filtered["DEX_Calls"])+abs(df_filtered["DEX_Puts"])
 
+    df_dex = df_filtered.groupby("Strike")[["DEX_Total","DEX_Total"]].sum().reset_index()
+    df_dex.rename(columns={"DEX_Total":"DEX","DEX_Total":"DELTA_MAGNET"}, inplace=True)
 
     # Calculs supplémentaires
     net_gex = df_gex['GEX'].sum()
