@@ -35,19 +35,6 @@ if uploaded_file is not None:
     df_gex = df_filtered.groupby("Strike")[["GEX_Total","ABS_Total"]].sum().reset_index()
     df_gex.rename(columns={"GEX_Total":"GEX","ABS_Total":"ABS"}, inplace=True)
 
-   
- # Étape 5 : Calculs Delta
-    for col in ["Delta","Open Interest","Delta.1","Open Interest.1"]:
-        df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce')
-
-    df_filtered["DEX_Calls"] = df_filtered["Delta"]*df_filtered["Open Interest"]*(df_filtered["Strike"]**2)*100
-    df_filtered["DEX_Puts"] = df_filtered["Delta.1"]*df_filtered["Open Interest.1"]*(df_filtered["Strike"]**2)*100*-1
-    df_filtered["DEX_Total"] = df_filtered["DEX_Calls"]+df_filtered["DEX_Puts"]
-    df_filtered["DEX_Total"] = abs(df_filtered["DEX_Calls"])+abs(df_filtered["DEX_Puts"])
-
-    df_dex = df_filtered.groupby("Strike")[["DEX_Total","DEX_Total"]].sum().reset_index()
-    df_dex.rename(columns={"DEX_Total":"DEX","DEX_Total":"DELTA_MAGNET"}, inplace=True)
-
     # Calculs supplémentaires
     net_gex = df_gex['GEX'].sum()
     df_gex_sorted = df_gex.sort_values("Strike")
@@ -63,12 +50,6 @@ if uploaded_file is not None:
 
     df_gex_negative = df_gex[df_gex['GEX'] < 0]
     put_wall = df_gex_negative.loc[df_gex_negative['GEX'].idxmin()]['Strike'] if not df_gex_negative.empty else 'N/A'
-
-    # ===== NET GEX & REGIME =====
-    net_gex = df_gex["GEX"].sum()
-    gamma_regime = "🟢 Positive Gamma (Market pinned)" if net_gex > 0 else "🔴 Negative Gamma (Volatile)"
-
-    st.info(gamma_regime)
 
     # --- Graphique GEX en courbe ---
     top_n = st.slider("Nombre de strikes dominants", 5, 50, 50)
@@ -93,21 +74,6 @@ if uploaded_file is not None:
     ax.grid(True)
     st.pyplot(fig)
 
-    
-    # --- Graphique DEX en courbe ---
-    top_n = st.slider("Nombre de strikes dominants", 5, 50, 50)
-   
-    fig, ax = plt.subplots(figsize=(12,6))
-    ax.plot(df_dex["Strike"], df_dex["DEX"], marker='o', linestyle='-', color='blue', label='DEX')
-    ax.axhline(y=0, color="blue", linestyle="--", linewidth=2)
-
-    ax.set_xlabel("Strike Price")
-    ax.set_ylabel("Delta Exposure (DEX)")
-    ax.set_title(f"Courbe de Delta Exposure (DEX) ({closest_expiration_date})")
-    ax.legend()
-    ax.grid(True)
-    st.pyplot(fig)
-
     # --- Graphique Calls vs Puts ---
     df_gex_components_grouped = df_filtered[['Strike','GEX_Calls','GEX_Puts']].dropna().copy()
     df_gex_components_grouped = df_gex_components_grouped.groupby('Strike')[['GEX_Calls','GEX_Puts']].sum().reset_index()
@@ -126,7 +92,7 @@ if uploaded_file is not None:
 
     # --- Résumé ---
     summary_data = {
-        'Metric': ['NET_GEX','Max ABS Strike','CALL_WALL','PUT_WALL','ZERO GAMMA','DELTA_MAGNET'],
+        'Metric': ['NET_GEX','Max ABS Strike','CALL_WALL','PUT_WALL','ZERO GAMMA'],
         'Value': [f"{net_gex:.2e}", max_abs_strike, call_wall, put_wall, round(zero_gamma,2) if zero_gamma else 'N/A']
     }
     df_summary = pd.DataFrame(summary_data)
