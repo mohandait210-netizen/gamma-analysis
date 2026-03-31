@@ -37,7 +37,7 @@ if uploaded_file is not None:
 
    
  # Étape 5 : Calculs Delta
-    for col in ["delta","Open Interest","Delta.1","Open Interest.1"]:
+    for col in ["Delta","Open Interest","Delta.1","Open Interest.1"]:
         df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce')
 
     df_filtered["DEX_Calls"] = df_filtered["Delta"]*df_filtered["Open Interest"]*(df_filtered["Strike"]**2)*100
