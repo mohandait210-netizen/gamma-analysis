@@ -1255,3 +1255,255 @@ if uploaded_file is not None:
                 f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.1rem;"
                 f"font-weight:600;color:{color};'>{value}</div>"
                 f"</div>", unsafe_allow_html=True)
+
+
+# ============================================================
+#  CHARM & VANNA SECTION
+# ============================================================
+st.markdown("---")
+st.markdown("### ⚗️ Charm & Vanna — Greeks du 2e Ordre")
+
+# Explication pedagogique
+with st.expander("📖 C'est quoi Charm et Vanna ? (cliquer pour lire)", expanded=False):
+    st.markdown(f"""
+<div style='font-family:IBM Plex Mono,monospace;font-size:0.82rem;
+color:{TEXT};line-height:1.8;'>
+
+<b style='color:{ORANGE};'>CHARM (Delta Decay)</b> = dDelta / dTemps<br>
+→ A quelle vitesse le delta d'une option change avec le temps.<br>
+→ Charm positif : le delta monte avec le temps (call ITM).<br>
+→ Charm negatif : le delta baisse avec le temps (call OTM).<br><br>
+
+<b style='color:{BLUE};'>Comment utiliser Charm pour trader ?</b><br>
+• En fin de semaine (jeudi/vendredi), le Charm s'accelere.<br>
+• Les options proches de l'ATM voient leur delta se desintegrer vite.<br>
+• Les MM doivent de-hedger massivement → cree des flux directionnels.<br>
+• <b style='color:{GREEN};'>CharmEx negatif</b> = les MM vont vendre des actions pour se de-hedger → pression baissiere.<br>
+• <b style='color:{GREEN};'>CharmEx positif</b> = les MM vont acheter → pression haussiere.<br><br>
+
+<b style='color:{ORANGE};'>VANNA (Delta-Vol Sensitivity)</b> = dDelta / dIV = dVega / dSpot<br>
+→ Comment le delta change quand la volatilite change.<br>
+→ Vanna positif : quand IV monte, delta monte (puts OTM).<br>
+→ Vanna negatif : quand IV monte, delta baisse (calls OTM).<br><br>
+
+<b style='color:{BLUE};'>Comment utiliser Vanna pour trader ?</b><br>
+• Quand la volatilite baisse (VIX crush), les MM doivent re-hedger.<br>
+• <b style='color:{GREEN};'>VannaEx positif + VIX baisse</b> = les MM achevent des actions → rally.<br>
+• <b style='color:{GREEN};'>VannaEx negatif + VIX monte</b> = les MM vendent → acceleration baissiere.<br>
+• Le "Vanna rally" post-opex est tres connu : VIX baisse apres expiration → flux acheteurs.<br><br>
+
+<b style='color:{RED};'>Combinaison Charm + Vanna :</b><br>
+• En approche d'expiration : Charm domine (effet temps).<br>
+• En mouvement de vol : Vanna domine (effet IV).<br>
+• Les deux ensemble = feuille de route des flux MM pour la semaine.
+
+</div>
+""", unsafe_allow_html=True)
+
+if uploaded_file is not None:
+    from scipy.stats import norm as sp_norm
+
+    # Parametres
+    cv_exp_label = st.selectbox("Expiration (Charm/Vanna)", expiry_labels,
+        index=expiry_labels.index(closest_expiration_date) if closest_expiration_date in expiry_labels else 0,
+        key="cv_expiry")
+    cv_dt = expiry_options[expiry_labels.index(cv_exp_label)]
+
+    cv1, cv2 = st.columns(2)
+    with cv1:
+        spot_input = st.number_input("Spot price (S)", value=647.0, step=0.5, key="cv_spot")
+    with cv2:
+        rate_input = st.number_input("Taux sans risque (%)", value=5.0, step=0.1, key="cv_rate") / 100.0
+
+    df_cv = df[df['Expiration Date_dt'] == cv_dt].copy()
+    for col in ["Strike","IV","IV.1","Open Interest","Open Interest.1"]:
+        df_cv[col] = pd.to_numeric(df_cv[col], errors='coerce')
+
+    T_cv_days = max((cv_dt - pd.Timestamp(datetime.now().date())).days, 1)
+    T_cv      = T_cv_days / 365.0
+
+    st.markdown(
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.75rem;"
+        f"color:{MUTED};margin:0.5rem 0;'>T = {T_cv_days} jours | "
+        f"T_ann = {T_cv:.5f} | Spot = {spot_input}</div>",
+        unsafe_allow_html=True)
+
+    # Fonctions Greeks 2e ordre
+    def _d1d2(S, K, T, r, sigma):
+        d1 = (np.log(S/K) + (r + 0.5*sigma**2)*T) / (sigma*np.sqrt(T))
+        return d1, d1 - sigma*np.sqrt(T)
+
+    def calc_charm_fn(S, K, T, r, sigma):
+        if T <= 0 or sigma <= 0 or K <= 0: return np.nan
+        d1, d2 = _d1d2(S, K, T, r, sigma)
+        return -sp_norm.pdf(d1) * (2*r*T - d2*sigma*np.sqrt(T)) / (2*T*sigma*np.sqrt(T))
+
+    def calc_vanna_fn(S, K, T, r, sigma):
+        if T <= 0 or sigma <= 0 or K <= 0: return np.nan
+        d1, d2 = _d1d2(S, K, T, r, sigma)
+        return -sp_norm.pdf(d1) * d2 / sigma
+
+    # Calcul vectorisé
+    strikes_cv = df_cv["Strike"].values
+    iv_c_cv    = df_cv["IV"].values
+    iv_p_cv    = df_cv["IV.1"].values
+    oi_c_cv    = df_cv["Open Interest"].fillna(0).values
+    oi_p_cv    = df_cv["Open Interest.1"].fillna(0).values
+
+    ch_c, ch_p, va_c, va_p = [], [], [], []
+    for i in range(len(strikes_cv)):
+        ch_c.append(calc_charm_fn(spot_input, strikes_cv[i], T_cv, rate_input, iv_c_cv[i]) if iv_c_cv[i] > 0 else np.nan)
+        ch_p.append(calc_charm_fn(spot_input, strikes_cv[i], T_cv, rate_input, iv_p_cv[i]) if iv_p_cv[i] > 0 else np.nan)
+        va_c.append(calc_vanna_fn(spot_input, strikes_cv[i], T_cv, rate_input, iv_c_cv[i]) if iv_c_cv[i] > 0 else np.nan)
+        va_p.append(calc_vanna_fn(spot_input, strikes_cv[i], T_cv, rate_input, iv_p_cv[i]) if iv_p_cv[i] > 0 else np.nan)
+
+    df_cv["Charm_Call"] = ch_c
+    df_cv["Charm_Put"]  = ch_p
+    df_cv["Vanna_Call"] = va_c
+    df_cv["Vanna_Put"]  = va_p
+
+    df_cv["CharmEx_Call"] = df_cv["Charm_Call"] * oi_c_cv * strikes_cv * 100
+    df_cv["CharmEx_Put"]  = df_cv["Charm_Put"]  * oi_p_cv * strikes_cv * 100 * -1
+    df_cv["VannaEx_Call"] = df_cv["Vanna_Call"] * oi_c_cv * strikes_cv * 100
+    df_cv["VannaEx_Put"]  = df_cv["Vanna_Put"]  * oi_p_cv * strikes_cv * 100 * -1
+    df_cv["CharmEx"]      = df_cv["CharmEx_Call"].fillna(0) + df_cv["CharmEx_Put"].fillna(0)
+    df_cv["VannaEx"]      = df_cv["VannaEx_Call"].fillna(0) + df_cv["VannaEx_Put"].fillna(0)
+
+    df_cv_gex = df_cv.groupby("Strike")[["CharmEx","VannaEx"]].sum().reset_index()
+    df_cv_gex = df_cv_gex[df_cv_gex[["CharmEx","VannaEx"]].abs().sum(axis=1) > 0]
+
+    net_charm = df_cv_gex["CharmEx"].sum()
+    net_vanna = df_cv_gex["VannaEx"].sum()
+
+    # --- KPI cards ---
+    kv1, kv2, kv3, kv4 = st.columns(4)
+    charm_col  = GREEN if net_charm > 0 else RED
+    vanna_col  = GREEN if net_vanna > 0 else RED
+    charm_lbl  = "Acheteur" if net_charm > 0 else "Vendeur"
+    vanna_lbl  = "VIX crush -> haussier" if net_vanna > 0 else "VIX spike -> baissier"
+
+    for col_kv, label, value, color, sub in [
+        (kv1, "CHARM NET",       f"{net_charm:.2e}", charm_col, f"Flux MM: {charm_lbl}"),
+        (kv2, "VANNA NET",       f"{net_vanna:.2e}", vanna_col, vanna_lbl),
+        (kv3, "T RESTANT",       f"{T_cv_days}j",    ORANGE,    "Avant expiration"),
+        (kv4, "SPOT UTILISÉ",    f"{spot_input}",    BLUE,      "Pour les calculs BS"),
+    ]:
+        col_kv.markdown(
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {color};border-radius:8px;padding:1rem 1.2rem;'>"
+            f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;color:{MUTED};"
+            f"letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;'>{label}</div>"
+            f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.3rem;"
+            f"font-weight:600;color:{color};'>{value}</div>"
+            f"<div style='font-size:0.75rem;color:{MUTED};margin-top:0.3rem;'>{sub}</div>"
+            f"</div>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- Graphiques ---
+    top_n_cv = st.slider("Nombre de strikes", 5, 60, 40, key="cv_slider")
+    df_cv_top = df_cv_gex.assign(
+        ABS=df_cv_gex["CharmEx"].abs() + df_cv_gex["VannaEx"].abs()
+    ).nlargest(top_n_cv, "ABS").sort_values("Strike")
+
+    tab_charm, tab_vanna, tab_combined = st.tabs(["⏱️ Charm Exposure", "🌊 Vanna Exposure", "🔀 Vue combinée"])
+
+    with tab_charm:
+        fig_ch, ax_ch = plt.subplots(figsize=(13, 5))
+        colors_ch = [GREEN if v >= 0 else RED for v in df_cv_top["CharmEx"]]
+        ax_ch.bar(df_cv_top["Strike"], df_cv_top["CharmEx"],
+                  color=colors_ch, alpha=0.85, width=0.6)
+        ax_ch.axhline(y=0, color=BORDER, linestyle="--", linewidth=1)
+        ax_ch.axvline(x=spot_input, color=ORANGE, linestyle='--', linewidth=1.5,
+                      label=f'Spot ({spot_input})')
+        ax_ch.set_title(f"CHARM EXPOSURE PAR STRIKE — {cv_exp_label}  (T={T_cv_days}j)")
+        ax_ch.set_xlabel("Strike")
+        ax_ch.set_ylabel("Charm Exposure")
+        ax_ch.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y:.1e}'))
+        ax_ch.legend(fontsize=9)
+        fig_ch.tight_layout()
+        st.pyplot(fig_ch)
+
+        st.markdown(
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {charm_col};border-radius:8px;"
+            f"padding:0.75rem 1.25rem;font-family:IBM Plex Mono,monospace;"
+            f"font-size:0.82rem;color:{TEXT};'>"
+            f"<b style='color:{charm_col};'>CHARM SIGNAL :</b> "
+            f"CharmEx NET = {net_charm:.2e} → les MM vont "
+            f"{'<b>ACHETER</b> des actions pour maintenir leur hedge' if net_charm > 0 else '<b>VENDRE</b> des actions en se de-hedgeant'}"
+            f" au fil du temps. Effet amplifié en fin de semaine (T→0)."
+            f"</div>", unsafe_allow_html=True)
+
+    with tab_vanna:
+        fig_va, ax_va = plt.subplots(figsize=(13, 5))
+        colors_va = [GREEN if v >= 0 else RED for v in df_cv_top["VannaEx"]]
+        ax_va.bar(df_cv_top["Strike"], df_cv_top["VannaEx"],
+                  color=colors_va, alpha=0.85, width=0.6)
+        ax_va.axhline(y=0, color=BORDER, linestyle="--", linewidth=1)
+        ax_va.axvline(x=spot_input, color=ORANGE, linestyle='--', linewidth=1.5,
+                      label=f'Spot ({spot_input})')
+        ax_va.set_title(f"VANNA EXPOSURE PAR STRIKE — {cv_exp_label}")
+        ax_va.set_xlabel("Strike")
+        ax_va.set_ylabel("Vanna Exposure")
+        ax_va.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y:.1e}'))
+        ax_va.legend(fontsize=9)
+        fig_va.tight_layout()
+        st.pyplot(fig_va)
+
+        st.markdown(
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {vanna_col};border-radius:8px;"
+            f"padding:0.75rem 1.25rem;font-family:IBM Plex Mono,monospace;"
+            f"font-size:0.82rem;color:{TEXT};'>"
+            f"<b style='color:{vanna_col};'>VANNA SIGNAL :</b> "
+            f"VannaEx NET = {net_vanna:.2e} → si le VIX "
+            f"{'<b>BAISSE</b> → flux acheteurs MM (rally). Si VIX monte → flux vendeurs.' if net_vanna > 0 else '<b>MONTE</b> → flux vendeurs MM (sell-off). Si VIX baisse → flux acheteurs.'}"
+            f"</div>", unsafe_allow_html=True)
+
+    with tab_combined:
+        fig_comb, (ax_c1, ax_c2) = plt.subplots(2, 1, figsize=(13, 8), sharex=True)
+
+        ax_c1.fill_between(df_cv_top["Strike"], df_cv_top["CharmEx"], 0,
+                           where=df_cv_top["CharmEx"] >= 0, color=GREEN, alpha=0.3, interpolate=True)
+        ax_c1.fill_between(df_cv_top["Strike"], df_cv_top["CharmEx"], 0,
+                           where=df_cv_top["CharmEx"] < 0,  color=RED,   alpha=0.3, interpolate=True)
+        ax_c1.plot(df_cv_top["Strike"], df_cv_top["CharmEx"],
+                   color=ORANGE, linewidth=1.8, marker='o', markersize=3, label='Charm')
+        ax_c1.axhline(y=0, color=BORDER, linestyle='--', linewidth=1)
+        ax_c1.axvline(x=spot_input, color=ORANGE, linestyle=':', linewidth=1, alpha=0.6)
+        ax_c1.set_title("CHARM EXPOSURE (effet temps)")
+        ax_c1.set_ylabel("Charm Ex")
+        ax_c1.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y:.1e}'))
+        ax_c1.legend(fontsize=9)
+
+        ax_c2.fill_between(df_cv_top["Strike"], df_cv_top["VannaEx"], 0,
+                           where=df_cv_top["VannaEx"] >= 0, color=GREEN, alpha=0.3, interpolate=True)
+        ax_c2.fill_between(df_cv_top["Strike"], df_cv_top["VannaEx"], 0,
+                           where=df_cv_top["VannaEx"] < 0,  color=RED,   alpha=0.3, interpolate=True)
+        ax_c2.plot(df_cv_top["Strike"], df_cv_top["VannaEx"],
+                   color=BLUE, linewidth=1.8, marker='o', markersize=3, label='Vanna')
+        ax_c2.axhline(y=0, color=BORDER, linestyle='--', linewidth=1)
+        ax_c2.axvline(x=spot_input, color=ORANGE, linestyle=':', linewidth=1, alpha=0.6,
+                      label=f'Spot ({spot_input})')
+        ax_c2.set_title("VANNA EXPOSURE (effet volatilite)")
+        ax_c2.set_xlabel("Strike")
+        ax_c2.set_ylabel("Vanna Ex")
+        ax_c2.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y:.1e}'))
+        ax_c2.legend(fontsize=9)
+
+        fig_comb.tight_layout()
+        st.pyplot(fig_comb)
+
+        # Tableau top strikes
+        st.markdown("**Top strikes par exposition (Charm + Vanna)**")
+        df_cv_table = df_cv_gex.assign(
+            ABS_Total=df_cv_gex["CharmEx"].abs()+df_cv_gex["VannaEx"].abs()
+        ).nlargest(10,"ABS_Total")[["Strike","CharmEx","VannaEx"]].copy()
+        df_cv_table["Charm Signal"] = df_cv_table["CharmEx"].apply(
+            lambda x: "🟢 Acheteur" if x > 0 else "🔴 Vendeur")
+        df_cv_table["Vanna Signal"] = df_cv_table["VannaEx"].apply(
+            lambda x: "🟢 VIX crush -> up" if x > 0 else "🔴 VIX spike -> down")
+        st.dataframe(df_cv_table.style.format({
+            "CharmEx":"{:.2e}", "VannaEx":"{:.2e}"
+        }), use_container_width=True, hide_index=True)
