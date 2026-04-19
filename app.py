@@ -141,6 +141,16 @@ if uploaded_file is not None:
     net_gex       = df_gex["GEX"].sum()
     df_gex_sorted = df_gex.sort_values("Strike")
 
+    max_abs_strike = df_gex.loc[df_gex['ABS'].idxmax(), 'Strike']
+
+    df_gex_positive = df_gex[df_gex['GEX'] > 0]
+    call_wall = (df_gex_positive.loc[df_gex_positive['GEX'].idxmax(), 'Strike']
+                 if not df_gex_positive.empty else 'N/A')
+
+    df_gex_negative = df_gex[df_gex['GEX'] < 0]
+    put_wall = (df_gex_negative.loc[df_gex_negative['GEX'].idxmin(), 'Strike']
+                if not df_gex_negative.empty else 'N/A')
+
     # Zero Gamma : premier croisement de la courbe GEX avec y=0
     # entre le Put Wall et le Call Wall (definition correcte)
     zero_gamma = None
@@ -163,15 +173,7 @@ if uploaded_file is not None:
                 zero_gamma = round(s0 + (0 - g0) * (s1 - s0) / (g1 - g0), 2)
                 break  # on prend le premier croisement entre les deux walls
 
-    max_abs_strike = df_gex.loc[df_gex['ABS'].idxmax(), 'Strike']
 
-    df_gex_positive = df_gex[df_gex['GEX'] > 0]
-    call_wall = (df_gex_positive.loc[df_gex_positive['GEX'].idxmax(), 'Strike']
-                 if not df_gex_positive.empty else 'N/A')
-
-    df_gex_negative = df_gex[df_gex['GEX'] < 0]
-    put_wall = (df_gex_negative.loc[df_gex_negative['GEX'].idxmin(), 'Strike']
-                if not df_gex_negative.empty else 'N/A')
 
     # ============================================================
     #  REGIME + KPI CARDS
