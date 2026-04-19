@@ -376,3 +376,110 @@ if uploaded_file is not None:
         "</div>",
         unsafe_allow_html=True
     )
+
+
+# ============================================================
+#  IV SKEW SECTION
+# ============================================================
+st.markdown("---")
+st.markdown("### 📐 IV Skew — Smile de Volatilite")
+
+if uploaded_file is not None:
+
+    # Expiration selectionnee par slider
+    expiry_options = sorted(df['Expiration Date_dt'].dropna().unique())
+    expiry_labels  = [d.strftime('%a %b %d %Y') for d in expiry_options]
+    selected_label = st.selectbox("Expiration", expiry_labels, index=expiry_labels.index(closest_expiration_date) if closest_expiration_date in expiry_labels else 0)
+    selected_dt    = expiry_options[expiry_labels.index(selected_label)]
+
+    df_skew = df[df['Expiration Date_dt'] == selected_dt].copy()
+    for col in ["Strike","IV","IV.1","Delta","Delta.1","Open Interest","Open Interest.1"]:
+        df_skew[col] = pd.to_numeric(df_skew[col], errors='coerce')
+
+    # Calls et Puts avec IV valide
+    df_c = df_skew[df_skew["IV"]   > 0][["Strike","IV","Delta","Open Interest"]].copy()
+    df_p = df_skew[df_skew["IV.1"] > 0][["Strike","IV.1","Delta.1","Open Interest.1"]].copy()
+    df_p.rename(columns={"IV.1":"IV","Delta.1":"Delta","Open Interest.1":"Open Interest"}, inplace=True)
+
+    if df_c.empty or df_p.empty:
+        st.warning("Pas assez de donnees IV pour cette expiration.")
+    else:
+        # ATM = strike ou delta call est le plus proche de 0.5
+        atm = df_c.iloc[(df_c['Delta'] - 0.5).abs().argsort()[:1]]['Strike'].values[0]
+
+        # Skew metrics
+        put_25  = df_p.iloc[(df_p['Delta'].abs() - 0.25).abs().argsort()[:1]]
+        call_25 = df_c.iloc[(df_c['Delta'] - 0.25).abs().argsort()[:1]]
+        atm_iv  = df_c.iloc[(df_c['Delta'] - 0.5).abs().argsort()[:1]]['IV'].values[0]
+        skew_25 = put_25['IV'].values[0] - call_25['IV'].values[0]
+        skew_pct = skew_25 * 100
+
+        # KPI skew
+        sk1, sk2, sk3, sk4 = st.columns(4)
+        sk1.metric("ATM IV",          f"{atm_iv*100:.2f}%")
+        sk2.metric("IV Put 25-delta", f"{put_25['IV'].values[0]*100:.2f}%", delta=f"strike {int(put_25['Strike'].values[0])}")
+        sk3.metric("IV Call 25-delta",f"{call_25['IV'].values[0]*100:.2f}%", delta=f"strike {int(call_25['Strike'].values[0])}")
+        sk4.metric("Skew 25d (P-C)",  f"{skew_pct:+.2f}%",
+                   delta="Put premium" if skew_25 > 0 else "Call premium",
+                   delta_color="inverse" if skew_25 < 0 else "normal")
+
+        # Graphique
+        fig3, ax3 = plt.subplots(figsize=(12, 5))
+
+        # Trier par strike
+        df_c_s = df_c.sort_values("Strike")
+        df_p_s = df_p.sort_values("Strike")
+
+        ax3.plot(df_c_s["Strike"], df_c_s["IV"]*100,
+                 color=BLUE, linewidth=1.8, marker='o', markersize=3, label='IV Calls')
+        ax3.plot(df_p_s["Strike"], df_p_s["IV"]*100,
+                 color=RED,  linewidth=1.8, marker='o', markersize=3, label='IV Puts', linestyle='--')
+
+        # Zones colorees
+        ax3.fill_between(df_c_s["Strike"], df_c_s["IV"]*100,
+                         alpha=0.08, color=BLUE)
+        ax3.fill_between(df_p_s["Strike"], df_p_s["IV"]*100,
+                         alpha=0.08, color=RED)
+
+        # Lignes verticales cles
+        ax3.axvline(x=atm, color=GREEN, linestyle='--', linewidth=1.5, label=f'ATM ({int(atm)})')
+        if isinstance(put_wall,  (int,float)):
+            ax3.axvline(x=put_wall,  color=RED,    linestyle=':', linewidth=1, alpha=0.7, label=f'Put Wall ({int(put_wall)})')
+        if isinstance(call_wall, (int,float)):
+            ax3.axvline(x=call_wall, color=BLUE,   linestyle=':', linewidth=1, alpha=0.7, label=f'Call Wall ({int(call_wall)})')
+
+        # Annotation skew
+        ax3.annotate(f'Skew 25d: {skew_pct:+.2f}%',
+                     xy=(atm, atm_iv*100),
+                     xytext=(atm + 8, atm_iv*100 + 1.5),
+                     fontsize=9, color=ORANGE,
+                     arrowprops=dict(arrowstyle='->', color=ORANGE, lw=1))
+
+        ax3.set_title(f'IV SKEW - {selected_label}', fontsize=13, fontweight='bold')
+        ax3.set_xlabel("Strike Price")
+        ax3.set_ylabel("Implied Volatility (%)")
+        ax3.legend(fontsize=9)
+        ax3.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.1f}%'))
+        fig3.tight_layout()
+        st.pyplot(fig3)
+
+        # Interpretation
+        interp_color = GREEN if skew_25 > 0.005 else (RED if skew_25 < -0.005 else ORANGE)
+        if skew_25 > 0.015:
+            msg = "Put premium eleve - le marche paye cher la protection baissiere (fear dominant)"
+        elif skew_25 > 0.005:
+            msg = "Skew modere - put premium normal, marche prudent mais pas en panique"
+        elif skew_25 < -0.005:
+            msg = "Call premium - le marche anticipe une hausse ou couvre des positions courtes"
+        else:
+            msg = "Skew quasi-nul - marche indecis, calls et puts valorises pareillement"
+
+        st.markdown(
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {ORANGE};border-radius:8px;"
+            f"padding:0.75rem 1.25rem;font-family:IBM Plex Mono,monospace;"
+            f"font-size:0.82rem;color:{TEXT};margin-top:0.5rem;'>"
+            f"<b style='color:{ORANGE};'>INTERPRETATION :</b> {msg}"
+            f"</div>",
+            unsafe_allow_html=True
+        )
