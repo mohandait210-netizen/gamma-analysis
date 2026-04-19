@@ -483,3 +483,184 @@ if uploaded_file is not None:
             f"</div>",
             unsafe_allow_html=True
         )
+
+
+# ============================================================
+#  DELTA EXPOSURE (DEX) SECTION
+# ============================================================
+st.markdown("---")
+st.markdown("### 🧭 Delta Exposure (DEX) — Biais Directionnel")
+
+if uploaded_file is not None:
+
+    # Selecteur expiration
+    selected_label_dex = st.selectbox("Expiration (DEX)", expiry_labels,
+        index=expiry_labels.index(closest_expiration_date) if closest_expiration_date in expiry_labels else 0,
+        key="dex_expiry")
+    selected_dt_dex = expiry_options[expiry_labels.index(selected_label_dex)]
+
+    df_dex_raw = df[df['Expiration Date_dt'] == selected_dt_dex].copy()
+    for col in ["Strike","Delta","Delta.1","Open Interest","Open Interest.1"]:
+        df_dex_raw[col] = pd.to_numeric(df_dex_raw[col], errors='coerce')
+
+    # Calcul DEX
+    # DEX = Delta * OI * Strike * 100
+    # Delta call > 0  -> pression acheteuse quand le prix monte
+    # Delta put  < 0  -> pression vendeuse quand le prix monte
+    df_dex_raw["DEX_Calls"] = df_dex_raw["Delta"]   * df_dex_raw["Open Interest"]   * df_dex_raw["Strike"] * 100
+    df_dex_raw["DEX_Puts"]  = df_dex_raw["Delta.1"] * df_dex_raw["Open Interest.1"] * df_dex_raw["Strike"] * 100
+
+    df_dex = df_dex_raw.groupby("Strike")[["DEX_Calls","DEX_Puts"]].sum().reset_index()
+    df_dex["DEX_Total"] = df_dex["DEX_Calls"] + df_dex["DEX_Puts"]
+    df_dex["ABS_DEX"]   = df_dex["DEX_Total"].abs()
+    df_dex_sorted = df_dex.sort_values("Strike")
+
+    # Niveaux cles
+    net_dex      = df_dex["DEX_Total"].sum()
+    is_bull_dex  = net_dex > 0
+    dex_regime   = "HAUSSIER" if is_bull_dex else "BAISSIER"
+    dex_color    = GREEN if is_bull_dex else RED
+
+    df_dex_pos = df_dex[df_dex["DEX_Calls"] > 0]
+    df_dex_neg = df_dex[df_dex["DEX_Puts"]  < 0]
+    delta_call_wall = df_dex_pos.loc[df_dex_pos["DEX_Calls"].idxmax(), "Strike"] if not df_dex_pos.empty else "N/A"
+    delta_put_wall  = df_dex_neg.loc[df_dex_neg["DEX_Puts"].idxmin(),  "Strike"] if not df_dex_neg.empty else "N/A"
+
+    # Zero DEX : croisement de la courbe DEX_Total avec y=0 entre les deux walls
+    zero_dex = None
+    if isinstance(delta_call_wall, (int,float)) and isinstance(delta_put_wall, (int,float)):
+        low_dex  = min(delta_call_wall, delta_put_wall)
+        high_dex = max(delta_call_wall, delta_put_wall)
+        df_dex_between = df_dex_sorted[
+            (df_dex_sorted["Strike"] >= low_dex) &
+            (df_dex_sorted["Strike"] <= high_dex) &
+            (df_dex_sorted["ABS_DEX"] > 0)
+        ].reset_index(drop=True)
+        for i in range(len(df_dex_between) - 1):
+            d0 = df_dex_between["DEX_Total"].iloc[i]
+            d1 = df_dex_between["DEX_Total"].iloc[i + 1]
+            s0 = df_dex_between["Strike"].iloc[i]
+            s1 = df_dex_between["Strike"].iloc[i + 1]
+            if d0 * d1 < 0:
+                zero_dex = round(s0 + (0 - d0) * (s1 - s0) / (d1 - d0), 2)
+                break
+
+    # --- KPI cards ---
+    d1c, d2c, d3c, d4c = st.columns(4)
+    d1c.markdown(
+        f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+        f"border-left:3px solid {dex_color};border-radius:8px;padding:1rem 1.2rem;'>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;color:{MUTED};"
+        f"letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;'>NET DEX</div>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.3rem;"
+        f"font-weight:600;color:{dex_color};'>{net_dex:.2e}</div>"
+        f"<div style='font-size:0.75rem;color:{dex_color};margin-top:0.3rem;'>{dex_regime}</div>"
+        f"</div>", unsafe_allow_html=True)
+    d2c.markdown(
+        f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+        f"border-left:3px solid {BLUE};border-radius:8px;padding:1rem 1.2rem;'>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;color:{MUTED};"
+        f"letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;'>DELTA CALL WALL</div>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.3rem;"
+        f"font-weight:600;color:{BLUE};'>{delta_call_wall}</div>"
+        f"<div style='font-size:0.75rem;color:{MUTED};margin-top:0.3rem;'>Resistance delta</div>"
+        f"</div>", unsafe_allow_html=True)
+    d3c.markdown(
+        f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+        f"border-left:3px solid {RED};border-radius:8px;padding:1rem 1.2rem;'>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;color:{MUTED};"
+        f"letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;'>DELTA PUT WALL</div>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.3rem;"
+        f"font-weight:600;color:{RED};'>{delta_put_wall}</div>"
+        f"<div style='font-size:0.75rem;color:{MUTED};margin-top:0.3rem;'>Support delta</div>"
+        f"</div>", unsafe_allow_html=True)
+    d4c.markdown(
+        f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+        f"border-left:3px solid {ORANGE};border-radius:8px;padding:1rem 1.2rem;'>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;color:{MUTED};"
+        f"letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;'>ZERO DEX</div>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.3rem;"
+        f"font-weight:600;color:{ORANGE};'>{zero_dex if zero_dex else 'N/A'}</div>"
+        f"<div style='font-size:0.75rem;color:{MUTED};margin-top:0.3rem;'>Pivot directionnel</div>"
+        f"</div>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- Graphiques cote a cote ---
+    top_n_dex = st.slider("Nombre de strikes (DEX)", 5, 60, 50, key="dex_slider")
+    df_top_dex = df_dex.nlargest(top_n_dex, "ABS_DEX").sort_values("Strike")
+
+    fig_d1, fig_d2 = plt.subplots(1, 2, figsize=(14, 5))
+
+    # -- Courbe DEX Total --
+    ax_d1 = fig_d1
+    ax_d1 = fig_d2  # on va utiliser subplots correctement
+    fig_dex, (axd1, axd2) = plt.subplots(1, 2, figsize=(14, 5))
+
+    # Courbe DEX total
+    colors_dex = [GREEN if v >= 0 else RED for v in df_top_dex["DEX_Total"]]
+    axd1.fill_between(df_top_dex["Strike"], df_top_dex["DEX_Total"], 0,
+                      where=df_top_dex["DEX_Total"] >= 0, alpha=0.2, color=GREEN, interpolate=True)
+    axd1.fill_between(df_top_dex["Strike"], df_top_dex["DEX_Total"], 0,
+                      where=df_top_dex["DEX_Total"] < 0,  alpha=0.2, color=RED,   interpolate=True)
+    axd1.plot(df_top_dex["Strike"], df_top_dex["DEX_Total"],
+              color=BLUE, linewidth=1.8, marker='o', markersize=3, label='DEX Total')
+    axd1.axhline(y=0, color=BORDER, linestyle="--", linewidth=1)
+
+    if isinstance(delta_call_wall, (int,float)):
+        axd1.axvline(x=delta_call_wall, color=BLUE,   linestyle='--', linewidth=1.2, label=f'Delta Call Wall ({int(delta_call_wall)})')
+    if isinstance(delta_put_wall,  (int,float)):
+        axd1.axvline(x=delta_put_wall,  color=RED,    linestyle='--', linewidth=1.2, label=f'Delta Put Wall ({int(delta_put_wall)})')
+    if zero_dex:
+        axd1.axvline(x=zero_dex, color=ORANGE, linestyle='--', linewidth=1.2, label=f'Zero DEX ({zero_dex})')
+
+    axd1.set_title("DELTA EXPOSURE - Courbe Totale")
+    axd1.set_xlabel("Strike Price")
+    axd1.set_ylabel("Delta Exposure (DEX)")
+    axd1.legend(fontsize=8)
+
+    # Barres Calls vs Puts
+    bar_w = 0.4
+    df_comp = df_dex[df_dex["Strike"].isin(df_top_dex["Strike"])].sort_values("Strike")
+    axd2.bar(df_comp["Strike"] - bar_w/2, df_comp["DEX_Calls"],
+             bar_w, label='DEX Calls', color=BLUE,  alpha=0.85)
+    axd2.bar(df_comp["Strike"] + bar_w/2, df_comp["DEX_Puts"],
+             bar_w, label='DEX Puts',  color=RED,   alpha=0.85)
+    axd2.axhline(y=0, color=BORDER, linestyle='--', linewidth=1)
+    axd2.set_title("DEX CALLS vs PUTS")
+    axd2.set_xlabel("Strike Price")
+    axd2.legend(fontsize=8)
+
+    fig_dex.tight_layout()
+    st.pyplot(fig_dex)
+
+    # --- Interpretation ---
+    if net_dex > 0:
+        if net_dex > 5e9:
+            interp_dex = "DEX tres positif : les market makers sont massivement long delta -> hedging acheteur au-dessus du spot, frein naturel a la baisse"
+        else:
+            interp_dex = "DEX positif : biais directionnel haussier modere, les MM renforcent les hausses"
+    else:
+        if net_dex < -5e9:
+            interp_dex = "DEX tres negatif : les market makers sont massivement short delta -> hedging vendeur sous le spot, acceleration possible a la baisse"
+        else:
+            interp_dex = "DEX negatif : biais directionnel baissier, les MM amplifient les baisses"
+
+    st.markdown(
+        f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+        f"border-left:3px solid {dex_color};border-radius:8px;"
+        f"padding:0.75rem 1.25rem;font-family:IBM Plex Mono,monospace;"
+        f"font-size:0.82rem;color:{TEXT};margin-top:0.5rem;'>"
+        f"<b style='color:{dex_color};'>INTERPRETATION :</b> {interp_dex}"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+
+    # --- Résumé DEX ---
+    st.markdown("#### 📋 Resume DEX")
+    df_dex_summary = pd.DataFrame({
+        'Metric': ['NET DEX', 'Regime', 'Delta Call Wall', 'Delta Put Wall', 'Zero DEX'],
+        'Value':  [f"{net_dex:.2e}", dex_regime, delta_call_wall, delta_put_wall,
+                   zero_dex if zero_dex else 'N/A']
+    })
+    st.dataframe(df_dex_summary, use_container_width=True, hide_index=True)
