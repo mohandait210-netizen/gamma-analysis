@@ -875,3 +875,219 @@ if uploaded_file is not None:
         f"<b style='color:{oi_color};'>SENTIMENT OI :</b> {oi_msg}"
         f"</div>",
         unsafe_allow_html=True)
+
+
+# ============================================================
+#  GEX MULTI-EXPIRY SECTION
+# ============================================================
+st.markdown("---")
+st.markdown("### 📅 GEX Multi-Expiry — Comparaison des Profils")
+
+if uploaded_file is not None:
+
+    # Calcul GEX pour toutes les expirations
+    df_all = df.copy()
+    for col in ["Strike","Gamma","Gamma.1","Open Interest","Open Interest.1"]:
+        df_all[col] = pd.to_numeric(df_all[col], errors='coerce')
+
+    df_all["GEX_Calls"] = df_all["Gamma"]   * df_all["Open Interest"]   * (df_all["Strike"]**2) * 100
+    df_all["GEX_Puts"]  = df_all["Gamma.1"] * df_all["Open Interest.1"] * (df_all["Strike"]**2) * 100 * -1
+    df_all["GEX_Total"] = df_all["GEX_Calls"] + df_all["GEX_Puts"]
+    df_all["ABS_GEX"]   = df_all["GEX_Calls"].abs() + df_all["GEX_Puts"].abs()
+
+    all_exps    = sorted(df_all['Expiration Date_dt'].dropna().unique())
+    exp_labels  = [d.strftime('%a %b %d') for d in all_exps]
+    exp_map     = dict(zip(exp_labels, all_exps))
+
+    # NET GEX par expiration
+    by_exp_gex = df_all.groupby("Expiration Date_dt")[["GEX_Total","ABS_GEX"]].sum().reset_index()
+    by_exp_gex["Label"]   = by_exp_gex["Expiration Date_dt"].dt.strftime('%a %b %d')
+    by_exp_gex["Regime"]  = by_exp_gex["GEX_Total"].apply(lambda x: GREEN if x > 0 else RED)
+    by_exp_gex["n_strikes"] = df_all.groupby("Expiration Date_dt")["Strike"].nunique().values
+
+    # --- KPI: NET GEX cumule toutes expirations ---
+    total_net_gex = by_exp_gex["GEX_Total"].sum()
+    dominant_exp  = by_exp_gex.loc[by_exp_gex["ABS_GEX"].idxmax(), "Label"]
+    all_positive  = (by_exp_gex["GEX_Total"] > 0).all()
+
+    k1, k2, k3 = st.columns(3)
+    for col_k, label, value, color, sub in [
+        (k1, "NET GEX CUMULE",    f"{total_net_gex:.2e}", GREEN if total_net_gex > 0 else RED,
+             "Toutes expirations"),
+        (k2, "EXPIRATION DOMINANTE", dominant_exp,        ORANGE, "Plus grand ABS GEX"),
+        (k3, "REGIME GLOBAL",     "ALL POSITIVE" if all_positive else "MIXTE",
+             GREEN if all_positive else ORANGE, "Tendance marche"),
+    ]:
+        col_k.markdown(
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {color};border-radius:8px;padding:1rem 1.2rem;'>"
+            f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;color:{MUTED};"
+            f"letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;'>{label}</div>"
+            f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.3rem;"
+            f"font-weight:600;color:{color};'>{value}</div>"
+            f"<div style='font-size:0.75rem;color:{MUTED};margin-top:0.3rem;'>{sub}</div>"
+            f"</div>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- Tabs ---
+    tab_mx1, tab_mx2, tab_mx3 = st.tabs([
+        "📊 NET GEX par expiration",
+        "🔀 Comparaison profils",
+        "🌡️ Heatmap strikes x expiry"
+    ])
+
+    with tab_mx1:
+        fig_mx1, (axm1, axm2) = plt.subplots(1, 2, figsize=(14, 5))
+
+        # Barres NET GEX par expiration
+        bar_colors = [GREEN if v > 0 else RED for v in by_exp_gex["GEX_Total"]]
+        axm1.bar(range(len(by_exp_gex)), by_exp_gex["GEX_Total"],
+                 color=bar_colors, alpha=0.85)
+        axm1.axhline(y=0, color=BORDER, linestyle='--', linewidth=1)
+        axm1.set_xticks(range(len(by_exp_gex)))
+        axm1.set_xticklabels(by_exp_gex["Label"], rotation=45, ha='right', fontsize=8)
+        axm1.set_title("NET GEX PAR EXPIRATION")
+        axm1.set_ylabel("Net GEX")
+        axm1.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y:.1e}'))
+
+        # ABS GEX (poids de chaque expiration)
+        axm2.bar(range(len(by_exp_gex)), by_exp_gex["ABS_GEX"],
+                 color=BLUE, alpha=0.75)
+        axm2.set_xticks(range(len(by_exp_gex)))
+        axm2.set_xticklabels(by_exp_gex["Label"], rotation=45, ha='right', fontsize=8)
+        axm2.set_title("POIDS GEX ABSOLU PAR EXPIRATION")
+        axm2.set_ylabel("ABS GEX")
+        axm2.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y:.1e}'))
+
+        fig_mx1.tight_layout()
+        st.pyplot(fig_mx1)
+
+        # Table recap
+        tbl = by_exp_gex[["Label","GEX_Total","ABS_GEX","n_strikes"]].copy()
+        tbl["Regime"] = tbl["GEX_Total"].apply(lambda x: "🟢 Positive" if x > 0 else "🔴 Negative")
+        tbl["Poids%"] = (tbl["ABS_GEX"] / tbl["ABS_GEX"].sum() * 100).round(1)
+        tbl.rename(columns={"Label":"Expiration","GEX_Total":"Net GEX",
+                             "ABS_GEX":"ABS GEX","n_strikes":"Strikes"}, inplace=True)
+        st.dataframe(tbl.style.format({
+            "Net GEX":"{:.2e}", "ABS GEX":"{:.2e}", "Poids%":"{:.1f}%"
+        }), use_container_width=True, hide_index=True)
+
+    with tab_mx2:
+        # Selecteur multi-expiration
+        selected_exps = st.multiselect(
+            "Choisir les expirations a comparer",
+            options=exp_labels,
+            default=exp_labels[:4]
+        )
+
+        if len(selected_exps) < 2:
+            st.warning("Selectionnez au moins 2 expirations.")
+        else:
+            # Palette de couleurs pour les courbes
+            palette = [BLUE, GREEN, ORANGE, RED, "#a78bfa", "#34d399", "#fb923c", "#f472b6",
+                       "#38bdf8", "#facc15"]
+
+            fig_mx2, ax_mx2 = plt.subplots(figsize=(13, 6))
+
+            for i, label in enumerate(selected_exps):
+                dt_sel = exp_map[label]
+                df_exp = df_all[df_all["Expiration Date_dt"] == dt_sel]
+                df_g   = df_exp.groupby("Strike")[["GEX_Total","ABS_GEX"]].sum().reset_index()
+                df_g   = df_g[df_g["ABS_GEX"] > 0].sort_values("Strike")
+
+                color = palette[i % len(palette)]
+                ax_mx2.plot(df_g["Strike"], df_g["GEX_Total"],
+                            linewidth=1.6, marker='o', markersize=2,
+                            label=label, color=color, alpha=0.9)
+
+            ax_mx2.axhline(y=0, color=BORDER, linestyle='--', linewidth=1)
+            ax_mx2.set_title("COMPARAISON PROFILS GEX PAR EXPIRATION")
+            ax_mx2.set_xlabel("Strike Price")
+            ax_mx2.set_ylabel("GEX")
+            ax_mx2.legend(fontsize=9, loc='upper left')
+            fig_mx2.tight_layout()
+            st.pyplot(fig_mx2)
+
+            # Niveaux cles par expiration selectionnee
+            st.markdown("**Niveaux cles par expiration selectionnee**")
+            rows = []
+            for label in selected_exps:
+                dt_sel = exp_map[label]
+                df_exp = df_all[df_all["Expiration Date_dt"] == dt_sel]
+                df_g   = df_exp.groupby("Strike")[["GEX_Total","ABS_GEX","GEX_Calls","GEX_Puts"]].sum().reset_index()
+                df_g   = df_g[df_g["ABS_GEX"] > 0]
+
+                net    = df_g["GEX_Total"].sum()
+                df_pos = df_g[df_g["GEX_Total"] > 0]
+                df_neg = df_g[df_g["GEX_Total"] < 0]
+                cw = df_pos.loc[df_pos["GEX_Total"].idxmax(),"Strike"] if not df_pos.empty else "N/A"
+                pw = df_neg.loc[df_neg["GEX_Total"].idxmin(),"Strike"] if not df_neg.empty else "N/A"
+
+                # Zero gamma entre pw et cw
+                zg = "N/A"
+                if isinstance(cw,(int,float)) and isinstance(pw,(int,float)):
+                    lo, hi = min(cw,pw), max(cw,pw)
+                    df_bt  = df_g[(df_g["Strike"]>=lo)&(df_g["Strike"]<=hi)&(df_g["ABS_GEX"]>0)].sort_values("Strike").reset_index(drop=True)
+                    for ii in range(len(df_bt)-1):
+                        g0,g1 = df_bt["GEX_Total"].iloc[ii], df_bt["GEX_Total"].iloc[ii+1]
+                        s0,s1 = df_bt["Strike"].iloc[ii],    df_bt["Strike"].iloc[ii+1]
+                        if g0*g1 < 0:
+                            zg = round(s0+(0-g0)*(s1-s0)/(g1-g0), 1)
+                            break
+
+                rows.append({"Expiration":label, "Net GEX":f"{net:.2e}",
+                             "Regime":"🟢 POS" if net>0 else "🔴 NEG",
+                             "Call Wall":cw, "Put Wall":pw, "Zero Gamma":zg})
+
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    with tab_mx3:
+        st.markdown("**GEX par strike et expiration — intensite relative**")
+
+        # Construire la heatmap : lignes = strikes actifs, colonnes = expirations
+        strike_range = st.slider("Zone strikes", int(df_all["Strike"].min()),
+                                 int(df_all["Strike"].max()),
+                                 (580, 700), step=5, key="heatmap_strikes")
+
+        df_heat = df_all[
+            (df_all["Strike"] >= strike_range[0]) &
+            (df_all["Strike"] <= strike_range[1])
+        ].groupby(["Strike","Expiration Date_dt"])["GEX_Total"].sum().reset_index()
+
+        pivot = df_heat.pivot(index="Strike", columns="Expiration Date_dt", values="GEX_Total").fillna(0)
+        pivot.columns = [c.strftime('%b %d') for c in pivot.columns]
+        pivot = pivot.sort_index(ascending=False)
+
+        fig_heat, ax_heat = plt.subplots(figsize=(13, max(6, len(pivot)*0.25)))
+
+        import matplotlib.colors as mcolors
+        cmap = mcolors.LinearSegmentedColormap.from_list(
+            "gex", [RED, DARK_BG, GREEN], N=256)
+
+        vmax = pivot.abs().max().max()
+        im = ax_heat.imshow(pivot.values, cmap=cmap, aspect='auto',
+                            vmin=-vmax, vmax=vmax)
+
+        ax_heat.set_xticks(range(len(pivot.columns)))
+        ax_heat.set_xticklabels(pivot.columns, fontsize=8)
+        ax_heat.set_yticks(range(len(pivot.index)))
+        ax_heat.set_yticklabels([f"{int(s)}" for s in pivot.index], fontsize=7)
+        ax_heat.set_title("HEATMAP GEX — Rouge=Puts dominant / Vert=Calls dominant")
+
+        plt.colorbar(im, ax=ax_heat, fraction=0.02, pad=0.02,
+                     label="GEX (negatif=Puts, positif=Calls)")
+        fig_heat.tight_layout()
+        st.pyplot(fig_heat)
+
+        st.markdown(
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {BLUE};border-radius:8px;"
+            f"padding:0.75rem 1.25rem;font-family:IBM Plex Mono,monospace;"
+            f"font-size:0.82rem;color:{TEXT};'>"
+            f"<b style='color:{BLUE};'>LECTURE :</b> "
+            f"Les colonnes vertes = expirations Call-dominantes (marche pince). "
+            f"Les zones rouges persistantes sur plusieurs expirations = niveaux de support gamma fort. "
+            f"Un strike vert sur toutes les expirations = resistance gamma majeure."
+            f"</div>",
+            unsafe_allow_html=True)
