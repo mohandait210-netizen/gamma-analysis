@@ -141,22 +141,21 @@ if uploaded_file is not None:
     net_gex       = df_gex["GEX"].sum()
     df_gex_sorted = df_gex.sort_values("Strike")
 
-    # Zero Gamma : strike ou le GEX cumule (Calls + Puts) change de signe
-    # Methode correcte : on cumule le GEX de bas en haut et on detecte le flip
+    # Zero Gamma : cumsum du GEX sur les strikes non-vides uniquement
+    # On exclut les strikes a GEX=0 (options non traitees) qui faussent le cumul
+    # Le Zero Gamma est le strike ou le cumul bascule de Put-dominant a Call-dominant
     zero_gamma = None
-    df_gex_sorted = df_gex_sorted.copy()
-    df_gex_sorted["GEX_cumsum"] = df_gex_sorted["GEX"].cumsum()
+    df_nonzero = df_gex_sorted[df_gex_sorted["ABS"] > 0].copy().reset_index(drop=True)
+    df_nonzero["cumsum"] = df_nonzero["GEX"].cumsum()
 
-    strikes_arr = df_gex_sorted["Strike"].values
-    cumsum_arr  = df_gex_sorted["GEX_cumsum"].values
-
-    for i in range(len(cumsum_arr) - 1):
-        c0, c1 = cumsum_arr[i], cumsum_arr[i + 1]
-        s0, s1 = strikes_arr[i], strikes_arr[i + 1]
-        if c0 * c1 < 0:  # le cumul change de signe ici
-            # interpolation lineaire du croisement exact
+    for i in range(len(df_nonzero) - 1):
+        c0 = df_nonzero["cumsum"].iloc[i]
+        c1 = df_nonzero["cumsum"].iloc[i + 1]
+        s0 = df_nonzero["Strike"].iloc[i]
+        s1 = df_nonzero["Strike"].iloc[i + 1]
+        if c0 * c1 < 0:
             zero_gamma = round(s0 + (0 - c0) * (s1 - s0) / (c1 - c0), 2)
-            break  # on prend le premier croisement (le plus bas = flip principal)
+            break  # premier flip = transition Put -> Call dominante
 
     max_abs_strike = df_gex.loc[df_gex['ABS'].idxmax(), 'Strike']
 
