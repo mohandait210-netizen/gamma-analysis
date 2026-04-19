@@ -664,3 +664,214 @@ if uploaded_file is not None:
                    zero_dex if zero_dex else 'N/A']
     })
     st.dataframe(df_dex_summary, use_container_width=True, hide_index=True)
+
+
+# ============================================================
+#  OPEN INTEREST ANALYSIS SECTION
+# ============================================================
+st.markdown("---")
+st.markdown("### 📊 Open Interest — Niveaux Cles & Positionnement")
+
+if uploaded_file is not None:
+
+    # Calcul OI global
+    df_oi = df.copy()
+    for col in ["Strike","Open Interest","Open Interest.1","Volume","Volume.1","Delta","Delta.1"]:
+        df_oi[col] = pd.to_numeric(df_oi[col], errors='coerce')
+
+    df_oi["OI_Calls"] = df_oi["Open Interest"].fillna(0)
+    df_oi["OI_Puts"]  = df_oi["Open Interest.1"].fillna(0)
+    df_oi["OI_Total"] = df_oi["OI_Calls"] + df_oi["OI_Puts"]
+    df_oi["Vol_Total"]= df_oi["Volume"].fillna(0) + df_oi["Volume.1"].fillna(0)
+
+    # PCR global
+    total_oi_calls = df_oi["OI_Calls"].sum()
+    total_oi_puts  = df_oi["OI_Puts"].sum()
+    pcr_global     = total_oi_puts / total_oi_calls if total_oi_calls > 0 else 0
+
+    # Par strike (toutes expirations)
+    by_strike = df_oi.groupby("Strike")[["OI_Calls","OI_Puts","OI_Total","Vol_Total"]].sum().reset_index()
+    by_strike["PCR"] = by_strike["OI_Puts"] / by_strike["OI_Calls"].replace(0, np.nan)
+
+    # Par expiration
+    by_exp = df_oi.groupby("Expiration Date_dt")[["OI_Calls","OI_Puts","OI_Total"]].sum().reset_index()
+    by_exp["PCR"]   = by_exp["OI_Puts"] / by_exp["OI_Calls"].replace(0, np.nan)
+    by_exp["Label"] = by_exp["Expiration Date_dt"].dt.strftime('%b %d')
+
+    # Niveaux cles
+    max_oi_strike     = by_strike.loc[by_strike["OI_Total"].idxmax(), "Strike"]
+    max_call_strike   = by_strike.loc[by_strike["OI_Calls"].idxmax(), "Strike"]
+    max_put_strike    = by_strike.loc[by_strike["OI_Puts"].idxmax(),  "Strike"]
+    pcr_color         = RED if pcr_global > 1.2 else (GREEN if pcr_global < 0.8 else ORANGE)
+    pcr_label         = "Bearish" if pcr_global > 1.2 else ("Bullish" if pcr_global < 0.8 else "Neutre")
+
+    # --- KPI cards ---
+    o1, o2, o3, o4 = st.columns(4)
+    for col_ui, label, value, color, sub in [
+        (o1, "PCR GLOBAL",       f"{pcr_global:.3f}", pcr_color, pcr_label),
+        (o2, "MAX OI STRIKE",    int(max_oi_strike),  ORANGE,    "Niveau le + charge"),
+        (o3, "MAX CALL STRIKE",  int(max_call_strike),BLUE,      "Resistance OI"),
+        (o4, "MAX PUT STRIKE",   int(max_put_strike), RED,       "Support OI"),
+    ]:
+        col_ui.markdown(
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {color};border-radius:8px;padding:1rem 1.2rem;'>"
+            f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;color:{MUTED};"
+            f"letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;'>{label}</div>"
+            f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.4rem;"
+            f"font-weight:600;color:{color};'>{value}</div>"
+            f"<div style='font-size:0.75rem;color:{MUTED};margin-top:0.3rem;'>{sub}</div>"
+            f"</div>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- Tabs pour les 3 vues ---
+    tab_oi1, tab_oi2, tab_oi3 = st.tabs(["📊 OI par Strike", "📅 OI par Expiration", "🔥 Volume vs OI"])
+
+    with tab_oi1:
+        top_n_oi = st.slider("Nombre de strikes", 10, 80, 40, key="oi_slider")
+        df_top_oi = by_strike.nlargest(top_n_oi, "OI_Total").sort_values("Strike")
+
+        fig_oi, axoi = plt.subplots(figsize=(13, 5))
+        bw = 0.4
+        axoi.bar(df_top_oi["Strike"] - bw/2, df_top_oi["OI_Calls"],
+                 bw, label="OI Calls", color=BLUE, alpha=0.85)
+        axoi.bar(df_top_oi["Strike"] + bw/2, df_top_oi["OI_Puts"],
+                 bw, label="OI Puts",  color=RED,  alpha=0.85)
+
+        # Marquer les niveaux cles
+        axoi.axvline(x=max_call_strike, color=BLUE,   linestyle='--', linewidth=1.2,
+                     label=f"Max Call OI ({int(max_call_strike)})")
+        axoi.axvline(x=max_put_strike,  color=RED,    linestyle='--', linewidth=1.2,
+                     label=f"Max Put OI ({int(max_put_strike)})")
+        axoi.axvline(x=max_oi_strike,   color=ORANGE, linestyle='--', linewidth=1.2,
+                     label=f"Max Total OI ({int(max_oi_strike)})")
+
+        axoi.set_title("OPEN INTEREST CALLS vs PUTS PAR STRIKE (toutes expirations)")
+        axoi.set_xlabel("Strike")
+        axoi.set_ylabel("Open Interest")
+        axoi.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y/1000:.0f}k'))
+        axoi.legend(fontsize=8)
+        fig_oi.tight_layout()
+        st.pyplot(fig_oi)
+
+        # PCR par strike (heatmap textuelle)
+        st.markdown("**Put/Call Ratio par strike (top 20 OI)**")
+        df_pcr = by_strike.nlargest(20,"OI_Total")[["Strike","OI_Calls","OI_Puts","OI_Total","PCR"]].sort_values("Strike")
+        df_pcr["Signal"] = df_pcr["PCR"].apply(
+            lambda x: "🔴 Bearish" if x > 1.5 else ("🟢 Bullish" if x < 0.7 else "🟡 Neutre")
+        )
+        st.dataframe(df_pcr.style.format({
+            "OI_Calls":"{:,.0f}", "OI_Puts":"{:,.0f}",
+            "OI_Total":"{:,.0f}", "PCR":"{:.3f}"
+        }), use_container_width=True, hide_index=True)
+
+    with tab_oi2:
+        fig_exp, (axe1, axe2) = plt.subplots(1, 2, figsize=(13, 5))
+
+        # OI empile par expiration
+        x_exp   = range(len(by_exp))
+        axe1.bar(x_exp, by_exp["OI_Calls"], label="OI Calls", color=BLUE,  alpha=0.85)
+        axe1.bar(x_exp, by_exp["OI_Puts"],  bottom=by_exp["OI_Calls"],
+                 label="OI Puts",  color=RED,   alpha=0.85)
+        axe1.set_xticks(list(x_exp))
+        axe1.set_xticklabels(by_exp["Label"], rotation=45, ha='right', fontsize=8)
+        axe1.set_title("OI TOTAL PAR EXPIRATION")
+        axe1.set_ylabel("Open Interest")
+        axe1.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y/1000:.0f}k'))
+        axe1.legend(fontsize=8)
+
+        # PCR par expiration
+        pcr_colors = [GREEN if p < 0.8 else (RED if p > 1.2 else ORANGE) for p in by_exp["PCR"]]
+        axe2.bar(x_exp, by_exp["PCR"], color=pcr_colors, alpha=0.85)
+        axe2.axhline(y=1.0, color=BORDER, linestyle='--', linewidth=1, label='PCR = 1')
+        axe2.axhline(y=1.2, color=RED,    linestyle=':',  linewidth=1, alpha=0.5, label='Seuil bearish')
+        axe2.axhline(y=0.8, color=GREEN,  linestyle=':',  linewidth=1, alpha=0.5, label='Seuil bullish')
+        axe2.set_xticks(list(x_exp))
+        axe2.set_xticklabels(by_exp["Label"], rotation=45, ha='right', fontsize=8)
+        axe2.set_title("PUT/CALL RATIO PAR EXPIRATION")
+        axe2.set_ylabel("PCR")
+        axe2.legend(fontsize=8)
+
+        fig_exp.tight_layout()
+        st.pyplot(fig_exp)
+
+        # Table recap
+        by_exp_display = by_exp.copy()
+        by_exp_display["Expiration"] = by_exp_display["Expiration Date_dt"].dt.strftime('%a %d %b %Y')
+        by_exp_display["Signal"] = by_exp_display["PCR"].apply(
+            lambda x: "🔴 Bearish" if x > 1.2 else ("🟢 Bullish" if x < 0.8 else "🟡 Neutre")
+        )
+        st.dataframe(
+            by_exp_display[["Expiration","OI_Calls","OI_Puts","OI_Total","PCR","Signal"]]
+            .style.format({"OI_Calls":"{:,.0f}","OI_Puts":"{:,.0f}",
+                           "OI_Total":"{:,.0f}","PCR":"{:.3f}"}),
+            use_container_width=True, hide_index=True)
+
+    with tab_oi3:
+        # Volume vs OI : detecter les nouveaux positionnements
+        df_vol_oi = by_strike[by_strike["Vol_Total"] > 0].copy()
+        df_vol_oi["Vol_OI_Ratio"] = df_vol_oi["Vol_Total"] / df_vol_oi["OI_Total"]
+        df_top_vol = df_vol_oi.nlargest(40, "Vol_Total").sort_values("Strike")
+
+        fig_vol, (axv1, axv2) = plt.subplots(1, 2, figsize=(13, 5))
+
+        # Volume par strike
+        axv1.bar(df_top_vol["Strike"], df_top_vol["Vol_Total"],
+                 color=ORANGE, alpha=0.85, label="Volume Total")
+        axv1.set_title("VOLUME PAR STRIKE (top 40)")
+        axv1.set_xlabel("Strike")
+        axv1.set_ylabel("Volume")
+        axv1.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y/1000:.0f}k'))
+
+        # Ratio Volume/OI (>1 = nouveau positionnement)
+        ratio_colors = [RED if r > 1 else (ORANGE if r > 0.5 else MUTED)
+                        for r in df_top_vol["Vol_OI_Ratio"]]
+        axv2.bar(df_top_vol["Strike"], df_top_vol["Vol_OI_Ratio"],
+                 color=ratio_colors, alpha=0.85)
+        axv2.axhline(y=1.0, color=RED,    linestyle='--', linewidth=1.2,
+                     label='Vol > OI (nouveau flux)')
+        axv2.axhline(y=0.5, color=ORANGE, linestyle=':',  linewidth=1,
+                     label='Vol > 50% OI')
+        axv2.set_title("RATIO VOLUME / OI PAR STRIKE")
+        axv2.set_xlabel("Strike")
+        axv2.set_ylabel("Vol / OI")
+        axv2.legend(fontsize=8)
+
+        fig_vol.tight_layout()
+        st.pyplot(fig_vol)
+
+        st.markdown(
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {ORANGE};border-radius:8px;"
+            f"padding:0.75rem 1.25rem;font-family:IBM Plex Mono,monospace;"
+            f"font-size:0.82rem;color:{TEXT};'>"
+            f"<b style='color:{ORANGE};'>LECTURE :</b> "
+            f"Vol/OI > 1 = du volume depasse l'OI existant -> NOUVEAU positionnement (argent frais). "
+            f"Vol/OI < 0.3 = activite faible sur l'OI existant -> positions anciennes non touchees."
+            f"</div>",
+            unsafe_allow_html=True)
+
+    # --- Interpretation globale ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    if pcr_global > 1.5:
+        oi_msg = f"PCR = {pcr_global:.2f} : sentiment tres bearish, les options traders se protegent massivement - contrariant haussier potentiel si le marche tient"
+        oi_color = RED
+    elif pcr_global > 1.2:
+        oi_msg = f"PCR = {pcr_global:.2f} : sentiment bearish modere, prudence dominante sur le marche"
+        oi_color = RED
+    elif pcr_global < 0.8:
+        oi_msg = f"PCR = {pcr_global:.2f} : sentiment bullish, les calls dominent - risque de complaisance"
+        oi_color = GREEN
+    else:
+        oi_msg = f"PCR = {pcr_global:.2f} : sentiment neutre, equilibre entre protection et speculation"
+        oi_color = ORANGE
+
+    st.markdown(
+        f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+        f"border-left:3px solid {oi_color};border-radius:8px;"
+        f"padding:0.75rem 1.25rem;font-family:IBM Plex Mono,monospace;"
+        f"font-size:0.82rem;color:{TEXT};'>"
+        f"<b style='color:{oi_color};'>SENTIMENT OI :</b> {oi_msg}"
+        f"</div>",
+        unsafe_allow_html=True)
