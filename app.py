@@ -1507,3 +1507,280 @@ if uploaded_file is not None:
         st.dataframe(df_cv_table.style.format({
             "CharmEx":"{:.2e}", "VannaEx":"{:.2e}"
         }), use_container_width=True, hide_index=True)
+
+
+# ============================================================
+#  VOLUME FLOW & UNUSUAL ACTIVITY SECTION
+# ============================================================
+st.markdown("---")
+st.markdown("### 🔥 Volume Flow — Détection Flux Inhabituels")
+
+if uploaded_file is not None:
+
+    df_vol = df.copy()
+    for col in ["Strike","Volume","Volume.1","Open Interest","Open Interest.1",
+                "Bid","Ask","Bid.1","Ask.1","Last Sale","Last Sale.1","IV","IV.1","Delta","Delta.1"]:
+        df_vol[col] = pd.to_numeric(df_vol[col], errors='coerce')
+
+    df_vol["Vol_C"]   = df_vol["Volume"].fillna(0)
+    df_vol["Vol_P"]   = df_vol["Volume.1"].fillna(0)
+    df_vol["OI_C"]    = df_vol["Open Interest"].fillna(0)
+    df_vol["OI_P"]    = df_vol["Open Interest.1"].fillna(0)
+    df_vol["Vol_Tot"] = df_vol["Vol_C"] + df_vol["Vol_P"]
+    df_vol["Spread_C"]= df_vol["Ask"]   - df_vol["Bid"]
+    df_vol["Spread_P"]= df_vol["Ask.1"] - df_vol["Bid.1"]
+
+    # Ratio Vol/OI
+    df_vol["VoI_C"] = df_vol["Vol_C"] / df_vol["OI_C"].replace(0, np.nan)
+    df_vol["VoI_P"] = df_vol["Vol_P"] / df_vol["OI_P"].replace(0, np.nan)
+
+    # Classification du trade : achat sur Ask = bullish, vente sur Bid = bearish
+    # Heuristique : Last Sale >= Ask -> achat agressif | Last Sale <= Bid -> vente agressive
+    def classify_flow(last, bid, ask):
+        try:
+            l,b,a = float(last), float(bid), float(ask)
+            mid = (b+a)/2
+            if l >= a:   return "🟢 Achat agressif"
+            elif l <= b: return "🔴 Vente agressive"
+            elif l > mid: return "🟡 Achat passif"
+            else:         return "🟠 Vente passive"
+        except: return "⚪ Inconnu"
+
+    df_vol["Flow_C"] = [classify_flow(r["Last Sale"],   r["Bid"],   r["Ask"])   for _, r in df_vol.iterrows()]
+    df_vol["Flow_P"] = [classify_flow(r["Last Sale.1"], r["Bid.1"], r["Ask.1"]) for _, r in df_vol.iterrows()]
+
+    # Stats globales
+    total_vol_c = df_vol["Vol_C"].sum()
+    total_vol_p = df_vol["Vol_P"].sum()
+    pcr_vol     = total_vol_p / total_vol_c if total_vol_c > 0 else 0
+
+    # Seuil "inhabituel" = p95 du volume non-nul
+    p95_c = df_vol[df_vol["Vol_C"]>0]["Vol_C"].quantile(0.95)
+    p95_p = df_vol[df_vol["Vol_P"]>0]["Vol_P"].quantile(0.95)
+    p95_voi = 2.0  # Vol/OI > 2 = argent frais certain
+
+    # Flux inhabituels
+    df_unusual = df_vol[
+        (df_vol["Vol_C"] > p95_c) | (df_vol["Vol_P"] > p95_p) |
+        (df_vol["VoI_C"] > p95_voi) | (df_vol["VoI_P"] > p95_voi)
+    ].copy()
+
+    pcr_col   = GREEN if pcr_vol < 0.8 else (RED if pcr_vol > 1.2 else ORANGE)
+    pcr_lbl   = "Bullish" if pcr_vol < 0.8 else ("Bearish" if pcr_vol > 1.2 else "Neutre")
+
+    # --- KPI ---
+    fv1, fv2, fv3, fv4 = st.columns(4)
+    for col_fv, label, value, color, sub in [
+        (fv1, "VOL CALLS TOTAL",  f"{total_vol_c:,.0f}", BLUE,    "Tous strikes/expirations"),
+        (fv2, "VOL PUTS TOTAL",   f"{total_vol_p:,.0f}", RED,     "Tous strikes/expirations"),
+        (fv3, "PCR VOLUME",       f"{pcr_vol:.3f}",      pcr_col, pcr_lbl),
+        (fv4, "FLUX INHABITUELS", f"{len(df_unusual)}",  ORANGE,  f"Vol>p95 ou Vol/OI>2"),
+    ]:
+        col_fv.markdown(
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {color};border-radius:8px;padding:1rem 1.2rem;'>"
+            f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;color:{MUTED};"
+            f"letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;'>{label}</div>"
+            f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.3rem;"
+            f"font-weight:600;color:{color};'>{value}</div>"
+            f"<div style='font-size:0.75rem;color:{MUTED};margin-top:0.3rem;'>{sub}</div>"
+            f"</div>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    tab_v1, tab_v2, tab_v3, tab_v4 = st.tabs([
+        "📊 Volume par Strike",
+        "🚨 Flux Inhabituels",
+        "💰 Argent Frais (Vol/OI)",
+        "🎯 Strikes Dominants"
+    ])
+
+    with tab_v1:
+        # Selecteur expiration
+        vol_exp = st.selectbox("Expiration", ["Toutes"] + expiry_labels, key="vol_exp")
+        if vol_exp == "Toutes":
+            df_plot = df_vol.groupby("Strike")[["Vol_C","Vol_P","Vol_Tot"]].sum().reset_index()
+        else:
+            dt_sel  = expiry_options[expiry_labels.index(vol_exp)]
+            df_plot = df_vol[df_vol["Expiration Date_dt"]==dt_sel].groupby(
+                "Strike")[["Vol_C","Vol_P","Vol_Tot"]].sum().reset_index()
+
+        top_n_vol = st.slider("Strikes affichés", 10, 80, 40, key="vol_slider")
+        df_plot_top = df_plot.nlargest(top_n_vol,"Vol_Tot").sort_values("Strike")
+
+        fig_v1, (axv1, axv2) = plt.subplots(1, 2, figsize=(14, 5))
+
+        bw = 0.4
+        axv1.bar(df_plot_top["Strike"]-bw/2, df_plot_top["Vol_C"],
+                 bw, color=BLUE, alpha=0.85, label="Vol Calls")
+        axv1.bar(df_plot_top["Strike"]+bw/2, df_plot_top["Vol_P"],
+                 bw, color=RED,  alpha=0.85, label="Vol Puts")
+        axv1.set_title("VOLUME CALLS vs PUTS PAR STRIKE")
+        axv1.set_xlabel("Strike")
+        axv1.set_ylabel("Volume")
+        axv1.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y/1000:.0f}k'))
+        axv1.legend(fontsize=9)
+
+        # PCR volume par strike
+        df_plot_top["PCR_vol"] = df_plot_top["Vol_P"] / df_plot_top["Vol_C"].replace(0, np.nan)
+        pcr_colors = [GREEN if p < 0.8 else (RED if p > 1.2 else ORANGE)
+                      for p in df_plot_top["PCR_vol"].fillna(1)]
+        axv2.bar(df_plot_top["Strike"], df_plot_top["PCR_vol"].fillna(0),
+                 color=pcr_colors, alpha=0.85)
+        axv2.axhline(y=1.0, color=BORDER, linestyle='--', linewidth=1, label='PCR=1')
+        axv2.axhline(y=1.2, color=RED,    linestyle=':',  linewidth=1, alpha=0.5)
+        axv2.axhline(y=0.8, color=GREEN,  linestyle=':',  linewidth=1, alpha=0.5)
+        axv2.set_title("PUT/CALL RATIO VOLUME PAR STRIKE")
+        axv2.set_xlabel("Strike")
+        axv2.set_ylabel("PCR Volume")
+        axv2.legend(fontsize=9)
+
+        fig_v1.tight_layout()
+        st.pyplot(fig_v1)
+
+    with tab_v2:
+        st.markdown(f"**{len(df_unusual)} lignes avec activité anormale détectée**")
+
+        # Seuil configurable
+        min_vol = st.slider("Volume minimum", 100, 10000, 1000, step=100, key="unusual_minvol")
+        min_voi = st.slider("Vol/OI minimum", 1.0, 20.0, 2.0, step=0.5, key="unusual_minvoi")
+
+        df_unu = df_vol[
+            ((df_vol["Vol_C"] >= min_vol) | (df_vol["Vol_P"] >= min_vol)) &
+            ((df_vol["VoI_C"] >= min_voi) | (df_vol["VoI_P"] >= min_voi))
+        ].copy()
+
+        if df_unu.empty:
+            st.warning("Aucun flux inhabituel avec ces seuils. Réduisez les filtres.")
+        else:
+            # Calls inhabituels
+            df_unu_c = df_unu[df_unu["Vol_C"] >= min_vol].copy()
+            df_unu_c = df_unu_c[df_unu_c["VoI_C"] >= min_voi]
+            if not df_unu_c.empty:
+                st.markdown(f"<b style='color:{BLUE};'>🔵 CALLS inhabituels ({len(df_unu_c)})</b>", unsafe_allow_html=True)
+                tbl_c = df_unu_c.nlargest(15,"Vol_C")[
+                    ["Expiration Date","Strike","Vol_C","OI_C","VoI_C",
+                     "Bid","Ask","Last Sale","IV","Delta","Flow_C"]
+                ].copy()
+                tbl_c.columns = ["Expiry","Strike","Volume","OI","Vol/OI",
+                                  "Bid","Ask","Last","IV","Delta","Signal"]
+                tbl_c["IV"] = tbl_c["IV"].apply(lambda x: f"{x*100:.1f}%" if pd.notna(x) else "-")
+                tbl_c["Vol/OI"] = tbl_c["Vol/OI"].apply(lambda x: f"{x:.1f}x" if pd.notna(x) else "-")
+                st.dataframe(tbl_c.style.format({
+                    "Volume":"{:,.0f}","OI":"{:,.0f}",
+                    "Bid":"{:.2f}","Ask":"{:.2f}","Last":"{:.2f}","Delta":"{:.3f}"
+                }), use_container_width=True, hide_index=True)
+
+            # Puts inhabituels
+            df_unu_p = df_unu[df_unu["Vol_P"] >= min_vol].copy()
+            df_unu_p = df_unu_p[df_unu_p["VoI_P"] >= min_voi]
+            if not df_unu_p.empty:
+                st.markdown(f"<b style='color:{RED};'>🔴 PUTS inhabituels ({len(df_unu_p)})</b>", unsafe_allow_html=True)
+                tbl_p = df_unu_p.nlargest(15,"Vol_P")[
+                    ["Expiration Date","Strike","Vol_P","OI_P","VoI_P",
+                     "Bid.1","Ask.1","Last Sale.1","IV.1","Delta.1","Flow_P"]
+                ].copy()
+                tbl_p.columns = ["Expiry","Strike","Volume","OI","Vol/OI",
+                                  "Bid","Ask","Last","IV","Delta","Signal"]
+                tbl_p["IV"] = tbl_p["IV"].apply(lambda x: f"{x*100:.1f}%" if pd.notna(x) else "-")
+                tbl_p["Vol/OI"] = tbl_p["Vol/OI"].apply(lambda x: f"{x:.1f}x" if pd.notna(x) else "-")
+                st.dataframe(tbl_p.style.format({
+                    "Volume":"{:,.0f}","OI":"{:,.0f}",
+                    "Bid":"{:.2f}","Ask":"{:.2f}","Last":"{:.2f}","Delta":"{:.3f}"
+                }), use_container_width=True, hide_index=True)
+
+    with tab_v3:
+        st.markdown("**Vol/OI > 1 = argent frais entrant (position nouvelle, pas du roulement)**")
+
+        fig_voi, (axvoi1, axvoi2) = plt.subplots(1, 2, figsize=(14, 5))
+
+        by_s_all = df_vol.groupby("Strike")[["Vol_C","Vol_P","OI_C","OI_P"]].sum().reset_index()
+        by_s_all["VoI_C"] = by_s_all["Vol_C"] / by_s_all["OI_C"].replace(0, np.nan)
+        by_s_all["VoI_P"] = by_s_all["Vol_P"] / by_s_all["OI_P"].replace(0, np.nan)
+        by_s_top = by_s_all[by_s_all["Vol_C"]+by_s_all["Vol_P"] > 500].sort_values("Strike")
+
+        voi_c_colors = [RED if v > 5 else (ORANGE if v > 2 else BLUE)
+                        for v in by_s_top["VoI_C"].fillna(0)]
+        voi_p_colors = [RED if v > 5 else (ORANGE if v > 2 else RED)
+                        for v in by_s_top["VoI_P"].fillna(0)]
+
+        axvoi1.bar(by_s_top["Strike"], by_s_top["VoI_C"].fillna(0),
+                   color=voi_c_colors, alpha=0.85)
+        axvoi1.axhline(y=1,  color=ORANGE, linestyle='--', linewidth=1, label='Vol=OI')
+        axvoi1.axhline(y=5,  color=RED,    linestyle='--', linewidth=1, label='Vol=5x OI')
+        axvoi1.set_title("VOL/OI CALLS — Rouge = flux massif")
+        axvoi1.set_xlabel("Strike")
+        axvoi1.set_ylabel("Vol/OI")
+        axvoi1.legend(fontsize=8)
+
+        axvoi2.bar(by_s_top["Strike"], by_s_top["VoI_P"].fillna(0),
+                   color=voi_p_colors, alpha=0.85)
+        axvoi2.axhline(y=1,  color=ORANGE, linestyle='--', linewidth=1, label='Vol=OI')
+        axvoi2.axhline(y=5,  color=RED,    linestyle='--', linewidth=1, label='Vol=5x OI')
+        axvoi2.set_title("VOL/OI PUTS — Rouge = flux massif")
+        axvoi2.set_xlabel("Strike")
+        axvoi2.set_ylabel("Vol/OI")
+        axvoi2.legend(fontsize=8)
+
+        fig_voi.tight_layout()
+        st.pyplot(fig_voi)
+
+        st.markdown(
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {ORANGE};border-radius:8px;"
+            f"padding:0.75rem 1.25rem;font-family:IBM Plex Mono,monospace;"
+            f"font-size:0.82rem;color:{TEXT};'>"
+            f"<b style='color:{ORANGE};'>LECTURE Vol/OI :</b> "
+            f"🔵 Vol/OI &lt; 1 = roulement de positions existantes. "
+            f"🟠 Vol/OI 1-5 = nouveaux entrants significatifs. "
+            f"🔴 Vol/OI &gt; 5 = flux massif, probable trade institutionnel ou event-driven."
+            f"</div>", unsafe_allow_html=True)
+
+    with tab_v4:
+        st.markdown("**Visualisation du sentiment directionnel par strike**")
+
+        by_s_exp = df_vol.groupby(["Strike","Expiration Date_dt"])[
+            ["Vol_C","Vol_P","OI_C","OI_P"]].sum().reset_index()
+        by_s_exp = by_s_exp[by_s_exp["Vol_C"]+by_s_exp["Vol_P"] > 0]
+        by_s_exp["Bull_Score"] = by_s_exp["Vol_C"] / (by_s_exp["Vol_C"]+by_s_exp["Vol_P"])
+        by_s_exp["Label"] = by_s_exp["Expiration Date_dt"].dt.strftime('%b %d')
+
+        by_s_total = df_vol.groupby("Strike")[["Vol_C","Vol_P"]].sum().reset_index()
+        by_s_total = by_s_total[by_s_total["Vol_C"]+by_s_total["Vol_P"] > 500]
+        by_s_total["Bull_Score"] = by_s_total["Vol_C"] / (by_s_total["Vol_C"]+by_s_total["Vol_P"])
+        by_s_total = by_s_total.sort_values("Strike")
+
+        fig_sent, ax_sent = plt.subplots(figsize=(13, 5))
+        sent_colors = [GREEN if b > 0.6 else (RED if b < 0.4 else ORANGE)
+                       for b in by_s_total["Bull_Score"]]
+        bars = ax_sent.bar(by_s_total["Strike"], by_s_total["Bull_Score"]-0.5,
+                           color=sent_colors, alpha=0.85, bottom=0.5)
+        ax_sent.axhline(y=0.5, color=BORDER, linestyle='--', linewidth=1.5)
+        ax_sent.axhline(y=0.6, color=GREEN,  linestyle=':',  linewidth=1, alpha=0.6, label='60% Calls')
+        ax_sent.axhline(y=0.4, color=RED,    linestyle=':',  linewidth=1, alpha=0.6, label='60% Puts')
+        ax_sent.set_title("SENTIMENT VOLUME PAR STRIKE (% Calls vs Puts)")
+        ax_sent.set_xlabel("Strike")
+        ax_sent.set_ylabel("% Volume Calls")
+        ax_sent.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y*100:.0f}%'))
+        ax_sent.set_ylim(0, 1)
+        ax_sent.legend(fontsize=9)
+        ax_sent.fill_between(ax_sent.get_xlim(), 0.5, 1.0, alpha=0.03, color=GREEN)
+        ax_sent.fill_between(ax_sent.get_xlim(), 0.0, 0.5, alpha=0.03, color=RED)
+        fig_sent.tight_layout()
+        st.pyplot(fig_sent)
+
+        # Top 3 signaux les plus forts
+        top_bull = by_s_total.nlargest(3,"Bull_Score")[["Strike","Vol_C","Vol_P","Bull_Score"]]
+        top_bear = by_s_total.nsmallest(3,"Bull_Score")[["Strike","Vol_C","Vol_P","Bull_Score"]]
+
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            st.markdown(f"<b style='color:{GREEN};'>🟢 Strikes les plus Bullish</b>", unsafe_allow_html=True)
+            top_bull["Bull_Score"] = top_bull["Bull_Score"].apply(lambda x: f"{x*100:.1f}%")
+            st.dataframe(top_bull.style.format({"Vol_C":"{:,.0f}","Vol_P":"{:,.0f}"}),
+                         use_container_width=True, hide_index=True)
+        with sc2:
+            st.markdown(f"<b style='color:{RED};'>🔴 Strikes les plus Bearish</b>", unsafe_allow_html=True)
+            top_bear["Bull_Score"] = top_bear["Bull_Score"].apply(lambda x: f"{x*100:.1f}%")
+            st.dataframe(top_bear.style.format({"Vol_C":"{:,.0f}","Vol_P":"{:,.0f}"}),
+                         use_container_width=True, hide_index=True)
