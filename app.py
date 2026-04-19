@@ -141,21 +141,27 @@ if uploaded_file is not None:
     net_gex       = df_gex["GEX"].sum()
     df_gex_sorted = df_gex.sort_values("Strike")
 
-    # Zero Gamma : cumsum du GEX sur les strikes non-vides uniquement
-    # On exclut les strikes a GEX=0 (options non traitees) qui faussent le cumul
-    # Le Zero Gamma est le strike ou le cumul bascule de Put-dominant a Call-dominant
+    # Zero Gamma : premier croisement de la courbe GEX avec y=0
+    # entre le Put Wall et le Call Wall (definition correcte)
     zero_gamma = None
-    df_nonzero = df_gex_sorted[df_gex_sorted["ABS"] > 0].copy().reset_index(drop=True)
-    df_nonzero["cumsum"] = df_nonzero["GEX"].cumsum()
+    low_bound  = min(put_wall, call_wall) if isinstance(put_wall, (int,float)) and isinstance(call_wall, (int,float)) else None
+    high_bound = max(put_wall, call_wall) if isinstance(put_wall, (int,float)) and isinstance(call_wall, (int,float)) else None
 
-    for i in range(len(df_nonzero) - 1):
-        c0 = df_nonzero["cumsum"].iloc[i]
-        c1 = df_nonzero["cumsum"].iloc[i + 1]
-        s0 = df_nonzero["Strike"].iloc[i]
-        s1 = df_nonzero["Strike"].iloc[i + 1]
-        if c0 * c1 < 0:
-            zero_gamma = round(s0 + (0 - c0) * (s1 - s0) / (c1 - c0), 2)
-            break  # premier flip = transition Put -> Call dominante
+    if low_bound is not None and high_bound is not None:
+        df_between = df_gex_sorted[
+            (df_gex_sorted["Strike"] >= low_bound) &
+            (df_gex_sorted["Strike"] <= high_bound) &
+            (df_gex_sorted["ABS"] > 0)
+        ].reset_index(drop=True)
+
+        for i in range(len(df_between) - 1):
+            g0 = df_between["GEX"].iloc[i]
+            g1 = df_between["GEX"].iloc[i + 1]
+            s0 = df_between["Strike"].iloc[i]
+            s1 = df_between["Strike"].iloc[i + 1]
+            if g0 * g1 < 0:
+                zero_gamma = round(s0 + (0 - g0) * (s1 - s0) / (g1 - g0), 2)
+                break  # on prend le premier croisement entre les deux walls
 
     max_abs_strike = df_gex.loc[df_gex['ABS'].idxmax(), 'Strike']
 
