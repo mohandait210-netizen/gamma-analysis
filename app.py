@@ -1091,3 +1091,167 @@ if uploaded_file is not None:
             f"Un strike vert sur toutes les expirations = resistance gamma majeure."
             f"</div>",
             unsafe_allow_html=True)
+
+
+# ============================================================
+#  OPTIONS CHAIN INTERACTIVE
+# ============================================================
+st.markdown("---")
+st.markdown("### 🔗 Options Chain — Calls | Strike | Puts")
+
+if uploaded_file is not None:
+
+    # Selecteurs
+    oc1, oc2, oc3 = st.columns([2, 1, 1])
+    with oc1:
+        chain_exp_label = st.selectbox("Expiration", expiry_labels,
+            index=expiry_labels.index(closest_expiration_date) if closest_expiration_date in expiry_labels else 0,
+            key="chain_expiry")
+    with oc2:
+        show_atm_only = st.checkbox("Zone ATM uniquement", value=False)
+    with oc3:
+        atm_range = st.slider("Strikes autour ATM", 5, 50, 20, key="chain_atm_range") if show_atm_only else None
+
+    chain_dt = expiry_options[expiry_labels.index(chain_exp_label)]
+    df_chain = df[df['Expiration Date_dt'] == chain_dt].copy()
+
+    for col in ["Strike","Last Sale","Bid","Ask","Net","Volume","IV","Delta","Gamma","Open Interest",
+                "Last Sale.1","Net.1","Bid.1","Ask.1","Volume.1","IV.1","Delta.1","Gamma.1","Open Interest.1"]:
+        df_chain[col] = pd.to_numeric(df_chain[col], errors='coerce')
+
+    df_chain = df_chain.sort_values("Strike").reset_index(drop=True)
+
+    # ATM strike = delta call le plus proche de 0.5
+    df_with_delta = df_chain[df_chain["Delta"].notna() & (df_chain["Delta"] > 0)]
+    if not df_with_delta.empty:
+        atm_strike = df_with_delta.iloc[(df_with_delta["Delta"] - 0.5).abs().argsort()[:1]]["Strike"].values[0]
+    else:
+        atm_strike = df_chain["Strike"].median()
+
+    if show_atm_only and atm_range:
+        df_chain = df_chain[
+            (df_chain["Strike"] >= atm_strike - atm_range) &
+            (df_chain["Strike"] <= atm_strike + atm_range)
+        ].reset_index(drop=True)
+
+    # Construire le tableau chain
+    def fmt_num(val, decimals=2, suffix=""):
+        try:
+            v = float(val)
+            if v == 0 or pd.isna(v): return "-"
+            return f"{v:,.{decimals}f}{suffix}"
+        except: return "-"
+
+    def fmt_pct(val):
+        try:
+            v = float(val)
+            if v == 0 or pd.isna(v): return "-"
+            return f"{v*100:.1f}%"
+        except: return "-"
+
+    def fmt_int(val):
+        try:
+            v = int(float(val))
+            if v == 0: return "-"
+            return f"{v:,}"
+        except: return "-"
+
+    rows = []
+    for _, r in df_chain.iterrows():
+        strike = r["Strike"]
+        is_atm = abs(strike - atm_strike) <= 1
+
+        rows.append({
+            # CALLS
+            "OI C":     fmt_int(r["Open Interest"]),
+            "Vol C":    fmt_int(r["Volume"]),
+            "IV C":     fmt_pct(r["IV"]),
+            "Delta C":  fmt_num(r["Delta"], 3),
+            "Gamma C":  fmt_num(r["Gamma"], 4),
+            "Bid C":    fmt_num(r["Bid"]),
+            "Ask C":    fmt_num(r["Ask"]),
+            "Last C":   fmt_num(r["Last Sale"]),
+            # STRIKE
+            "⚡ STRIKE": f"{'★ ' if is_atm else ''}{int(strike)}",
+            # PUTS
+            "Last P":   fmt_num(r["Last Sale.1"]),
+            "Bid P":    fmt_num(r["Bid.1"]),
+            "Ask P":    fmt_num(r["Ask.1"]),
+            "Gamma P":  fmt_num(r["Gamma.1"], 4),
+            "Delta P":  fmt_num(r["Delta.1"], 3),
+            "IV P":     fmt_pct(r["IV.1"]),
+            "Vol P":    fmt_int(r["Volume.1"]),
+            "OI P":     fmt_int(r["Open Interest.1"]),
+        })
+
+    df_display = pd.DataFrame(rows)
+
+    # CSS pour colorier la colonne strike et les lignes ATM
+    def style_chain(df_s):
+        styles = pd.DataFrame("", index=df_s.index, columns=df_s.columns)
+
+        for i, row in df_s.iterrows():
+            strike_val = row["⚡ STRIKE"].replace("★ ", "")
+            try:
+                is_atm_row = abs(float(strike_val) - atm_strike) <= 1
+            except: is_atm_row = False
+
+            for col in df_s.columns:
+                if col == "⚡ STRIKE":
+                    if is_atm_row:
+                        styles.at[i, col] = f"background-color: {ORANGE}22; color: {ORANGE}; font-weight: bold; text-align: center;"
+                    else:
+                        styles.at[i, col] = f"background-color: {CARD_BG}; color: {TEXT}; font-weight: bold; text-align: center;"
+                elif col.endswith(" C"):
+                    styles.at[i, col] = f"color: {BLUE}; text-align: right;"
+                elif col.endswith(" P"):
+                    styles.at[i, col] = f"color: {RED}; text-align: right;"
+
+        return styles
+
+    # Affichage
+    st.markdown(
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.75rem;"
+        f"color:{MUTED};margin-bottom:0.5rem;'>"
+        f"★ = ATM ({int(atm_strike)})&nbsp;&nbsp;|&nbsp;&nbsp;"
+        f"<span style='color:{BLUE}'>■ CALLS</span>&nbsp;&nbsp;|&nbsp;&nbsp;"
+        f"<span style='color:{RED}'>■ PUTS</span>&nbsp;&nbsp;|&nbsp;&nbsp;"
+        f"{len(df_chain)} strikes affichés — {chain_exp_label}"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+
+    st.dataframe(
+        df_display.style.apply(style_chain, axis=None),
+        use_container_width=True,
+        hide_index=True,
+        height=min(600, len(df_display) * 36 + 40)
+    )
+
+    # --- Mini stats ATM ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    atm_row = df_chain[df_chain["Strike"] == atm_strike]
+    if not atm_row.empty:
+        r = atm_row.iloc[0]
+        spread_call = round(float(r["Ask"]) - float(r["Bid"]), 2) if pd.notna(r["Ask"]) and pd.notna(r["Bid"]) else "N/A"
+        spread_put  = round(float(r["Ask.1"]) - float(r["Bid.1"]), 2) if pd.notna(r["Ask.1"]) and pd.notna(r["Bid.1"]) else "N/A"
+        em_atm      = round(float(r["Last Sale"]) + float(r["Last Sale.1"]), 2) if pd.notna(r["Last Sale"]) and pd.notna(r["Last Sale.1"]) else "N/A"
+
+        st.markdown(f"**Stats ATM — Strike {int(atm_strike)}**")
+        ms1, ms2, ms3, ms4, ms5 = st.columns(5)
+        for col_ms, label, value, color in [
+            (ms1, "IV ATM Call",    fmt_pct(r["IV"]),          BLUE),
+            (ms2, "IV ATM Put",     fmt_pct(r["IV.1"]),        RED),
+            (ms3, "Spread Call",    f"{spread_call}",           MUTED),
+            (ms4, "Spread Put",     f"{spread_put}",            MUTED),
+            (ms5, "Expected Move",  f"±{em_atm}",              ORANGE),
+        ]:
+            col_ms.markdown(
+                f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+                f"border-left:3px solid {color};border-radius:6px;padding:0.75rem 1rem;'>"
+                f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.65rem;"
+                f"color:{MUTED};letter-spacing:0.08em;text-transform:uppercase;"
+                f"margin-bottom:0.3rem;'>{label}</div>"
+                f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.1rem;"
+                f"font-weight:600;color:{color};'>{value}</div>"
+                f"</div>", unsafe_allow_html=True)
