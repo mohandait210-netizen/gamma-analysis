@@ -5,7 +5,6 @@ import matplotlib as mpl
 import numpy as np
 from datetime import datetime
 from pathlib import Path
-from scipy.stats import norm as sp_norm
 
 # ===========================================================
 #  PAGE CONFIG
