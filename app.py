@@ -141,25 +141,22 @@ if uploaded_file is not None:
     net_gex       = df_gex["GEX"].sum()
     df_gex_sorted = df_gex.sort_values("Strike")
 
-    # Zero Gamma : vrai croisement de zero entre deux strikes consecutifs
-    # np.interp(0, GEX, Strike) est incorrect car GEX n'est pas monotone
+    # Zero Gamma : strike ou le GEX cumule (Calls + Puts) change de signe
+    # Methode correcte : on cumule le GEX de bas en haut et on detecte le flip
     zero_gamma = None
+    df_gex_sorted = df_gex_sorted.copy()
+    df_gex_sorted["GEX_cumsum"] = df_gex_sorted["GEX"].cumsum()
+
     strikes_arr = df_gex_sorted["Strike"].values
-    gex_arr     = df_gex_sorted["GEX"].values
-    best_cross, best_abs_sum = None, None
+    cumsum_arr  = df_gex_sorted["GEX_cumsum"].values
 
-    for i in range(len(gex_arr) - 1):
-        g0, g1 = gex_arr[i], gex_arr[i + 1]
+    for i in range(len(cumsum_arr) - 1):
+        c0, c1 = cumsum_arr[i], cumsum_arr[i + 1]
         s0, s1 = strikes_arr[i], strikes_arr[i + 1]
-        if g0 * g1 < 0:  # changement de signe => croisement
-            cross = s0 + (0 - g0) * (s1 - s0) / (g1 - g0)
-            abs_sum = abs(g0) + abs(g1)
-            if best_abs_sum is None or abs_sum < best_abs_sum:
-                best_abs_sum = abs_sum
-                best_cross   = cross
-
-    if best_cross is not None:
-        zero_gamma = round(best_cross, 2)
+        if c0 * c1 < 0:  # le cumul change de signe ici
+            # interpolation lineaire du croisement exact
+            zero_gamma = round(s0 + (0 - c0) * (s1 - s0) / (c1 - c0), 2)
+            break  # on prend le premier croisement (le plus bas = flip principal)
 
     max_abs_strike = df_gex.loc[df_gex['ABS'].idxmax(), 'Strike']
 
