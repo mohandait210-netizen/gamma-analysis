@@ -2027,3 +2027,273 @@ if uploaded_file is not None:
                 em = int(round(row["em_minus_s"] * MULTIPLIER))
                 lines_mult.append(f"{row['label']} | EM+ {ep} | EM- {em}")
         st.text_area(f"Texte multiplié × {MULTIPLIER}", value="\n".join(lines_mult), height=200)
+
+
+# ============================================================
+#  GEX WEEKLY — Cumul Lundi -> Vendredi
+# ============================================================
+st.markdown("---")
+st.markdown("### 📅 GEX Weekly — Cumul de la Semaine")
+
+if uploaded_file is not None:
+
+    # Detecter la semaine en cours et les semaines disponibles
+    all_exps_dt = sorted(df['Expiration Date_dt'].dropna().unique())
+
+    # Construire la liste des semaines disponibles dans le CSV
+    weeks = {}
+    for d in all_exps_dt:
+        monday = d - pd.Timedelta(days=d.weekday())
+        friday = monday + pd.Timedelta(days=4)
+        key    = monday.strftime('%d %b')
+        label  = f"Sem. {monday.strftime('%d %b')} → {friday.strftime('%d %b %Y')}"
+        if key not in weeks:
+            weeks[key] = {"label": label, "monday": monday, "friday": friday, "exps": []}
+        weeks[key]["exps"].append(d)
+
+    week_labels = [v["label"] for v in weeks.values()]
+    week_keys   = list(weeks.keys())
+
+    # Semaine en cours par defaut
+    today_ts = pd.Timestamp(datetime.now().date())
+    current_monday = today_ts - pd.Timedelta(days=today_ts.weekday())
+    current_key    = current_monday.strftime('%d %b')
+    default_idx    = week_keys.index(current_key) if current_key in week_keys else 0
+
+    selected_week_label = st.selectbox(
+        "Semaine", week_labels, index=default_idx, key="weekly_selector"
+    )
+    selected_week = weeks[week_keys[week_labels.index(selected_week_label)]]
+    week_exps     = selected_week["exps"]
+    week_days     = [d.strftime('%a %d %b') for d in week_exps]
+
+    st.markdown(
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.78rem;"
+        f"color:{MUTED};margin-bottom:1rem;'>"
+        f"Expirations incluses : "
+        + " · ".join([f"<span style='color:{TEXT};'>{d}</span>" for d in week_days])
+        + f"</div>", unsafe_allow_html=True)
+
+    # Calcul GEX pour toutes les expirations de la semaine
+    df_week_all = df[df['Expiration Date_dt'].isin(week_exps)].copy()
+    for col in ["Strike","Gamma","Gamma.1","Open Interest","Open Interest.1"]:
+        df_week_all[col] = pd.to_numeric(df_week_all[col], errors='coerce')
+
+    df_week_all["GEX_Calls"] = df_week_all["Gamma"]   * df_week_all["Open Interest"]   * (df_week_all["Strike"]**2) * 100
+    df_week_all["GEX_Puts"]  = df_week_all["Gamma.1"] * df_week_all["Open Interest.1"] * (df_week_all["Strike"]**2) * 100 * -1
+    df_week_all["GEX_Total"] = df_week_all["GEX_Calls"] + df_week_all["GEX_Puts"]
+    df_week_all["ABS_GEX"]   = df_week_all["GEX_Calls"].abs() + df_week_all["GEX_Puts"].abs()
+
+    # GEX Weekly cumule par strike
+    wgex = df_week_all.groupby("Strike")[
+        ["GEX_Total","ABS_GEX","GEX_Calls","GEX_Puts"]
+    ].sum().reset_index()
+    wgex = wgex[wgex["ABS_GEX"] > 0].sort_values("Strike").reset_index(drop=True)
+
+    # GEX par jour (pour la decomposition)
+    gex_by_day = {}
+    for d in week_exps:
+        df_d   = df_week_all[df_week_all["Expiration Date_dt"] == d]
+        gex_d  = df_d.groupby("Strike")["GEX_Total"].sum().reset_index()
+        gex_d.rename(columns={"GEX_Total": d.strftime('%a')}, inplace=True)
+        gex_by_day[d.strftime('%a')] = gex_d
+
+    # Niveaux cles weekly
+    net_wgex  = wgex["GEX_Total"].sum()
+    is_pos_w  = net_wgex > 0
+    wgex_col  = GREEN if is_pos_w else RED
+
+    df_wpos   = wgex[wgex["GEX_Total"] > 0]
+    df_wneg   = wgex[wgex["GEX_Total"] < 0]
+    wcall_wall= df_wpos.loc[df_wpos["GEX_Total"].idxmax(), "Strike"] if not df_wpos.empty else "N/A"
+    wput_wall = df_wneg.loc[df_wneg["GEX_Total"].idxmin(), "Strike"] if not df_wneg.empty else "N/A"
+
+    # Zero Gamma Weekly
+    wzero_gamma = None
+    if isinstance(wcall_wall,(int,float)) and isinstance(wput_wall,(int,float)):
+        lo_w, hi_w = min(wcall_wall, wput_wall), max(wcall_wall, wput_wall)
+        df_bt_w = wgex[(wgex["Strike"]>=lo_w)&(wgex["Strike"]<=hi_w)&(wgex["ABS_GEX"]>0)].reset_index(drop=True)
+        for i in range(len(df_bt_w)-1):
+            g0,g1 = df_bt_w["GEX_Total"].iloc[i], df_bt_w["GEX_Total"].iloc[i+1]
+            s0,s1 = df_bt_w["Strike"].iloc[i],    df_bt_w["Strike"].iloc[i+1]
+            if g0*g1 < 0:
+                wzero_gamma = round(s0 + (0-g0)*(s1-s0)/(g1-g0), 2)
+                break
+
+    # Max ABS strike weekly
+    wmax_abs = wgex.loc[wgex["ABS_GEX"].idxmax(), "Strike"]
+
+    # --- KPI ---
+    w1,w2,w3,w4,w5 = st.columns(5)
+    for col_w, label, value, color in [
+        (w1, "NET GEX WEEKLY",    f"{net_wgex:.2e}",                         wgex_col),
+        (w2, "REGIME",            "🟢 POSITIVE" if is_pos_w else "🔴 NEGATIVE", wgex_col),
+        (w3, "CALL WALL W",       f"{int(wcall_wall)}" if isinstance(wcall_wall,(int,float)) else "N/A", BLUE),
+        (w4, "PUT WALL W",        f"{int(wput_wall)}"  if isinstance(wput_wall,(int,float))  else "N/A", RED),
+        (w5, "ZERO GAMMA W",      f"{wzero_gamma}" if wzero_gamma else "N/A", ORANGE),
+    ]:
+        col_w.markdown(
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {color};border-radius:8px;padding:1rem 1.2rem;'>"
+            f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;color:{MUTED};"
+            f"letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;'>{label}</div>"
+            f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.3rem;"
+            f"font-weight:600;color:{color};'>{value}</div>"
+            f"</div>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    top_n_w = st.slider("Strikes affichés", 5, 60, 50, key="weekly_slider")
+    df_top_w = wgex.nlargest(top_n_w, "ABS_GEX").sort_values("Strike")
+
+    tab_w1, tab_w2, tab_w3 = st.tabs([
+        "📈 Courbe GEX Weekly",
+        "📊 Décomposition par jour",
+        "🧱 Calls vs Puts Weekly"
+    ])
+
+    with tab_w1:
+        fig_w1, ax_w1 = plt.subplots(figsize=(13, 6))
+
+        # Fill vert/rouge sous la courbe
+        ax_w1.fill_between(df_top_w["Strike"], df_top_w["GEX_Total"], 0,
+                           where=df_top_w["GEX_Total"] >= 0,
+                           alpha=0.18, color=GREEN, interpolate=True)
+        ax_w1.fill_between(df_top_w["Strike"], df_top_w["GEX_Total"], 0,
+                           where=df_top_w["GEX_Total"] < 0,
+                           alpha=0.18, color=RED, interpolate=True)
+
+        ax_w1.plot(df_top_w["Strike"], df_top_w["GEX_Total"],
+                   color=BLUE, linewidth=2, marker='o', markersize=3, label="GEX Weekly")
+        ax_w1.axhline(y=0, color=BORDER, linestyle="--", linewidth=1)
+
+        # Niveaux cles
+        if isinstance(wcall_wall,(int,float)):
+            ax_w1.axvline(x=wcall_wall, color=BLUE,   linestyle='--', linewidth=1.5,
+                          label=f"Call Wall W ({int(wcall_wall)})")
+        if isinstance(wput_wall,(int,float)):
+            ax_w1.axvline(x=wput_wall,  color=RED,    linestyle='--', linewidth=1.5,
+                          label=f"Put Wall W ({int(wput_wall)})")
+        if wzero_gamma:
+            ax_w1.axvline(x=wzero_gamma, color=ORANGE, linestyle='--', linewidth=1.5,
+                          label=f"Zero Gamma W ({wzero_gamma})")
+
+        ax_w1.set_title(
+            f"COURBE GEX WEEKLY — {selected_week['monday'].strftime('%d %b')} "
+            f"→ {selected_week['friday'].strftime('%d %b %Y')}  "
+            f"({len(week_exps)} expirations cumulées)",
+            fontsize=12, fontweight='bold')
+        ax_w1.set_xlabel("Strike Price")
+        ax_w1.set_ylabel("GEX Weekly Cumulé")
+        ax_w1.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y:.1e}'))
+        ax_w1.legend(fontsize=9)
+        fig_w1.tight_layout()
+        st.pyplot(fig_w1)
+
+        # Resume niveaux
+        st.markdown(
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {wgex_col};border-radius:8px;"
+            f"padding:0.75rem 1.25rem;font-family:IBM Plex Mono,monospace;"
+            f"font-size:0.82rem;color:{TEXT};'>"
+            f"<b style='color:{wgex_col};'>REGIME WEEKLY :</b> "
+            f"NET GEX = {net_wgex:.2e} → "
+            f"{'Marche pince, les MM freinent les moves' if is_pos_w else 'Marche volatil, les MM amplifient les moves'}. "
+            f"Call Wall {int(wcall_wall) if isinstance(wcall_wall,(int,float)) else 'N/A'} | "
+            f"Put Wall {int(wput_wall) if isinstance(wput_wall,(int,float)) else 'N/A'} | "
+            f"Zero Gamma {wzero_gamma if wzero_gamma else 'N/A'}"
+            f"</div>", unsafe_allow_html=True)
+
+    with tab_w2:
+        # Superposition des courbes GEX par jour + weekly
+        fig_w2, ax_w2 = plt.subplots(figsize=(13, 6))
+
+        palette_days = [BLUE, GREEN, ORANGE, RED, "#a78bfa"]
+        for i, (day_label, gex_d) in enumerate(gex_by_day.items()):
+            gex_d_active = gex_d[gex_d[day_label].abs() > 0].sort_values("Strike")
+            ax_w2.plot(gex_d_active["Strike"], gex_d_active[day_label],
+                       color=palette_days[i % len(palette_days)],
+                       linewidth=1.2, alpha=0.7, linestyle='--',
+                       marker='o', markersize=2, label=f"GEX {day_label}")
+
+        # Courbe weekly en gras par dessus
+        ax_w2.plot(df_top_w["Strike"], df_top_w["GEX_Total"],
+                   color=TEXT, linewidth=2.5, label="GEX WEEKLY", zorder=5)
+        ax_w2.axhline(y=0, color=BORDER, linestyle="--", linewidth=1)
+
+        if isinstance(wcall_wall,(int,float)):
+            ax_w2.axvline(x=wcall_wall, color=BLUE, linestyle=':', linewidth=1.2, alpha=0.7)
+        if isinstance(wput_wall,(int,float)):
+            ax_w2.axvline(x=wput_wall,  color=RED,  linestyle=':', linewidth=1.2, alpha=0.7)
+
+        ax_w2.set_title("DECOMPOSITION GEX PAR JOUR — Contribution de chaque expiration")
+        ax_w2.set_xlabel("Strike")
+        ax_w2.set_ylabel("GEX")
+        ax_w2.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y:.1e}'))
+        ax_w2.legend(fontsize=9, loc='upper left')
+        fig_w2.tight_layout()
+        st.pyplot(fig_w2)
+
+        # Poids de chaque jour dans le GEX weekly total
+        st.markdown("**Poids de chaque expiration dans le GEX Weekly**")
+        poids_rows = []
+        for d in week_exps:
+            df_d = df_week_all[df_week_all["Expiration Date_dt"]==d]
+            gex_d_net = df_d.groupby("Strike")["GEX_Total"].sum().sum()
+            gex_d_abs = df_d.groupby("Strike")["ABS_GEX"].sum().sum()
+            poids_rows.append({
+                "Expiration": d.strftime('%A %d %b'),
+                "Net GEX":    f"{gex_d_net:.2e}",
+                "ABS GEX":    f"{gex_d_abs:.2e}",
+                "Poids %":    f"{gex_d_abs/wgex['ABS_GEX'].sum()*100:.1f}%",
+                "Regime":     "🟢 Positive" if gex_d_net > 0 else "🔴 Negative"
+            })
+        st.dataframe(pd.DataFrame(poids_rows), use_container_width=True, hide_index=True)
+
+    with tab_w3:
+        fig_w3, ax_w3 = plt.subplots(figsize=(13, 6))
+        bw = 0.4
+        df_comp_w = wgex[wgex["Strike"].isin(df_top_w["Strike"])].sort_values("Strike")
+        ax_w3.bar(df_comp_w["Strike"]-bw/2, df_comp_w["GEX_Calls"],
+                  bw, color=BLUE, alpha=0.85, label="GEX Calls Weekly")
+        ax_w3.bar(df_comp_w["Strike"]+bw/2, df_comp_w["GEX_Puts"],
+                  bw, color=RED,  alpha=0.85, label="GEX Puts Weekly")
+        ax_w3.axhline(y=0, color=BORDER, linestyle='--', linewidth=1)
+        if isinstance(wcall_wall,(int,float)):
+            ax_w3.axvline(x=wcall_wall, color=BLUE, linestyle='--', linewidth=1.2,
+                          label=f"Call Wall ({int(wcall_wall)})")
+        if isinstance(wput_wall,(int,float)):
+            ax_w3.axvline(x=wput_wall, color=RED, linestyle='--', linewidth=1.2,
+                          label=f"Put Wall ({int(wput_wall)})")
+        ax_w3.set_title("GEX CALLS vs PUTS WEEKLY CUMULÉ")
+        ax_w3.set_xlabel("Strike")
+        ax_w3.set_ylabel("GEX Weekly")
+        ax_w3.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y:.1e}'))
+        ax_w3.legend(fontsize=9)
+        fig_w3.tight_layout()
+        st.pyplot(fig_w3)
+
+    # Export texte copiable
+    st.markdown("**Export Weekly**")
+    wcopy = (
+        f"WEEKLY {selected_week['monday'].strftime('%d %b')} - {selected_week['friday'].strftime('%d %b %Y')} | "
+        f"Call Wall: {int(wcall_wall) if isinstance(wcall_wall,(int,float)) else 'N/A'} | "
+        f"Put Wall: {int(wput_wall) if isinstance(wput_wall,(int,float)) else 'N/A'} | "
+        f"Zero Gamma: {wzero_gamma if wzero_gamma else 'N/A'} | "
+        f"Max ABS: {int(wmax_abs)}"
+    )
+    st.text_area("Niveaux Weekly", value=wcopy, height=70)
+
+    # Multiplié
+    def safe_mult(v):
+        try: return int(round(float(v)*MULTIPLIER))
+        except: return "N/A"
+
+    wmult = (
+        f"WEEKLY x{MULTIPLIER} | "
+        f"CW: {safe_mult(wcall_wall)} | "
+        f"PW: {safe_mult(wput_wall)} | "
+        f"ZG: {safe_mult(wzero_gamma) if wzero_gamma else 'N/A'} | "
+        f"MAX: {safe_mult(wmax_abs)}"
+    )
+    st.text_area(f"Niveaux Weekly × {MULTIPLIER}", value=wmult, height=70)
