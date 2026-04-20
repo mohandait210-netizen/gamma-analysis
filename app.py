@@ -70,6 +70,7 @@ MULTIPLIER = 41.36   # Ratio de conversion (ex: SPX → CAC40)
 # ============================================================
 #  HEADER
 # ============================================================
+st.markdown('<div id="gex-principal"></div>', unsafe_allow_html=True)
 st.title("Analyse Gamma Exposure (GEX)")
 
 col_sub1, col_sub2 = st.columns([3, 1])
@@ -87,6 +88,67 @@ with col_sub2:
     )
 
 st.markdown("<hr style='margin:0.5rem 0 1.5rem'>", unsafe_allow_html=True)
+
+
+# ============================================================
+#  NAVBAR
+# ============================================================
+st.markdown("""
+<style>
+.gex-navbar {
+    position: sticky;
+    top: 0;
+    z-index: 999;
+    background: #090c10ee;
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid #1e2d3d;
+    padding: 0.5rem 0;
+    margin-bottom: 1.5rem;
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.gex-navbar a {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #5a7a94 !important;
+    text-decoration: none !important;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid #1e2d3d;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+.gex-navbar a:hover {
+    color: #e8f0f7 !important;
+    border-color: #00aaff;
+    background: #0e1318;
+}
+.gex-navbar a.active {
+    color: #00ff9d !important;
+    border-color: #00ff9d;
+    background: rgba(0,255,157,0.07);
+}
+</style>
+
+<div class="gex-navbar">
+  <a href="#gex-principal">📊 GEX</a>
+  <a href="#iv-skew">📐 IV Skew</a>
+  <a href="#dex">🧭 DEX</a>
+  <a href="#open-interest">📊 OI</a>
+  <a href="#multi-expiry">📅 Multi-Expiry</a>
+  <a href="#options-chain">🔗 Chain</a>
+  <a href="#charm-vanna">⚗️ Charm/Vanna</a>
+  <a href="#volume-flow">🔥 Volume</a>
+  <a href="#expected-move">📐 Exp.Move</a>
+  <a href="#gex-weekly">📅 Weekly</a>
+</div>
+""", unsafe_allow_html=True)
+
 
 # ============================================================
 #  FILE UPLOAD
@@ -397,6 +459,7 @@ if uploaded_file is not None:
 # ============================================================
 #  IV SKEW SECTION
 # ============================================================
+st.markdown('<div id="iv-skew"></div>', unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("### 📐 IV Skew — Smile de Volatilite")
 
@@ -504,6 +567,7 @@ if uploaded_file is not None:
 # ============================================================
 #  DELTA EXPOSURE (DEX) SECTION
 # ============================================================
+st.markdown('<div id="dex"></div>', unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("### 🧭 Delta Exposure (DEX) — Biais Directionnel")
 
@@ -685,6 +749,7 @@ if uploaded_file is not None:
 # ============================================================
 #  OPEN INTEREST ANALYSIS SECTION
 # ============================================================
+st.markdown('<div id="open-interest"></div>', unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("### 📊 Open Interest — Niveaux Cles & Positionnement")
 
@@ -896,6 +961,7 @@ if uploaded_file is not None:
 # ============================================================
 #  GEX MULTI-EXPIRY SECTION
 # ============================================================
+st.markdown('<div id="multi-expiry"></div>', unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("### 📅 GEX Multi-Expiry — Comparaison des Profils")
 
@@ -1112,6 +1178,7 @@ if uploaded_file is not None:
 # ============================================================
 #  OPTIONS CHAIN INTERACTIVE
 # ============================================================
+st.markdown('<div id="options-chain"></div>', unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("### 🔗 Options Chain — Calls | Strike | Puts")
 
@@ -1276,6 +1343,7 @@ if uploaded_file is not None:
 # ============================================================
 #  CHARM & VANNA SECTION
 # ============================================================
+st.markdown('<div id="charm-vanna"></div>', unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("### ⚗️ Charm & Vanna — Greeks du 2e Ordre")
 
@@ -1526,6 +1594,7 @@ if uploaded_file is not None:
 # ============================================================
 #  VOLUME FLOW & UNUSUAL ACTIVITY SECTION
 # ============================================================
+st.markdown('<div id="volume-flow"></div>', unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("### 🔥 Volume Flow — Détection Flux Inhabituels")
 
@@ -1803,6 +1872,7 @@ if uploaded_file is not None:
 # ============================================================
 #  EXPECTED MOVE AUTO — TOUTES EXPIRATIONS
 # ============================================================
+st.markdown('<div id="expected-move"></div>', unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("### 📐 Expected Move — Toutes Expirations")
 
@@ -2047,6 +2117,7 @@ if uploaded_file is not None:
 # ============================================================
 #  GEX WEEKLY — Cumul Lundi -> Vendredi
 # ============================================================
+st.markdown('<div id="gex-weekly"></div>', unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("### 📅 GEX Weekly — Cumul de la Semaine")
 
