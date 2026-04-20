@@ -5,6 +5,7 @@ import matplotlib as mpl
 import numpy as np
 from datetime import datetime
 from pathlib import Path
+from scipy.stats import norm as sp_norm
 
 # ===========================================================
 #  PAGE CONFIG
@@ -1301,8 +1302,6 @@ color:{TEXT};line-height:1.8;'>
 """, unsafe_allow_html=True)
 
 if uploaded_file is not None:
-    from scipy.stats import norm as sp_norm
-
     # Parametres
     cv_exp_label = st.selectbox("Expiration (Charm/Vanna)", expiry_labels,
         index=expiry_labels.index(closest_expiration_date) if closest_expiration_date in expiry_labels else 0,
