@@ -219,10 +219,46 @@ if uploaded_file is not None:
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ============================================================
+    #  FILTRAGE STRIKES ACTIFS (elimine les segments vides)
+    # ============================================================
+    df_gex_active = df_gex[df_gex["ABS"] > 0].copy()
+
+    # ============================================================
+    #  EXPECTED MOVE AUTOMATIQUE (ATM = delta call ~0.5)
+    # ============================================================
+    em_plus  = "0000"
+    em_minus = "0000"
+    em_value = "0000"
+
+    for col in ["Last Sale", "Last Sale.1", "Bid", "Ask", "Bid.1", "Ask.1", "Delta"]:
+        if col in df_filtered.columns:
+            df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce')
+
+    df_atm_candidates = df_filtered[df_filtered["Delta"].notna() & (df_filtered["Delta"] > 0)]
+    if not df_atm_candidates.empty:
+        atm_idx    = (df_atm_candidates["Delta"] - 0.5).abs().argsort().iloc[0]
+        atm_row    = df_atm_candidates.iloc[atm_idx]
+        atm_strike = atm_row["Strike"]
+        put_row    = df_filtered[df_filtered["Strike"] == atm_strike]
+
+        bid_c = atm_row.get("Bid",   np.nan)
+        ask_c = atm_row.get("Ask",   np.nan)
+        bid_p = put_row["Bid.1"].values[0]  if len(put_row) > 0 else np.nan
+        ask_p = put_row["Ask.1"].values[0]  if len(put_row) > 0 else np.nan
+
+        mid_c = (float(bid_c)+float(ask_c))/2 if pd.notna(bid_c) and pd.notna(ask_c) else np.nan
+        mid_p = (float(bid_p)+float(ask_p))/2 if pd.notna(bid_p) and pd.notna(ask_p) else np.nan
+
+        if pd.notna(mid_c) and pd.notna(mid_p):
+            em_value = round(mid_c + mid_p, 2)
+            em_plus  = round(atm_strike + em_value, 2)
+            em_minus = round(atm_strike - em_value, 2)
+
+    # ============================================================
     #  GRAPHIQUES
     # ============================================================
     top_n = st.slider("Nombre de strikes dominants", 5, 50, 50)
-    df_top_abs = df_gex.nlargest(top_n, 'ABS').sort_values("Strike")
+    df_top_abs = df_gex_active.nlargest(top_n, 'ABS').sort_values("Strike")
 
     chart_col1, chart_col2 = st.columns(2)
 
@@ -241,16 +277,16 @@ if uploaded_file is not None:
         ax.axhline(y=0, color=BORDER, linestyle="--", linewidth=1)
 
         if isinstance(call_wall, (int, float)):
-            ax.axvline(x=call_wall, color=BLUE,   linestyle='--', linewidth=1.2, label='Call Wall')
+            ax.axvline(x=call_wall,  color=BLUE,   linestyle='--', linewidth=1.2, label=f'Call Wall ({int(call_wall)})')
         if isinstance(put_wall, (int, float)):
-            ax.axvline(x=put_wall,  color=RED,    linestyle='--', linewidth=1.2, label='Put Wall')
+            ax.axvline(x=put_wall,   color=RED,    linestyle='--', linewidth=1.2, label=f'Put Wall ({int(put_wall)})')
         if zero_gamma is not None:
-            ax.axvline(x=zero_gamma, color=ORANGE, linestyle='--', linewidth=1.2, label='Zero Gamma')
+            ax.axvline(x=zero_gamma, color=ORANGE, linestyle='--', linewidth=1.2, label=f'Zero Gamma ({zero_gamma})')
 
         ax.set_title(f"GAMMA EXPOSURE CURVE - {closest_expiration_date}")
         ax.set_xlabel("Strike Price")
         ax.set_ylabel("GEX")
-        ax.legend()
+        ax.legend(fontsize=8)
         fig.tight_layout()
         st.pyplot(fig)
 
@@ -263,89 +299,68 @@ if uploaded_file is not None:
             .sum()
             .reset_index()
         )
-        df_top_comp = df_gex_comp[df_gex_comp['Strike'].isin(df_top_abs['Strike'])]
+        df_gex_comp = df_gex_comp[df_gex_comp['Strike'].isin(df_top_abs['Strike'])]
 
         fig2, ax2 = plt.subplots(figsize=(8, 4.5))
         bw = 0.4
-        ax2.bar(df_top_comp['Strike'] - bw / 2, df_top_comp['GEX_Calls'],
-                bw, label='GEX Calls', color=BLUE,  alpha=0.85)
-        ax2.bar(df_top_comp['Strike'] + bw / 2, df_top_comp['GEX_Puts'],
-                bw, label='GEX Puts',  color=RED,   alpha=0.85)
+        ax2.bar(df_gex_comp['Strike'] - bw/2, df_gex_comp['GEX_Calls'],
+                bw, label='GEX Calls', color=BLUE, alpha=0.85)
+        ax2.bar(df_gex_comp['Strike'] + bw/2, df_gex_comp['GEX_Puts'],
+                bw, label='GEX Puts',  color=RED,  alpha=0.85)
         ax2.axhline(y=0, color=BORDER, linestyle='--', linewidth=1)
         ax2.set_title(f"CALLS vs PUTS - {closest_expiration_date}")
-        ax2.legend()
+        ax2.legend(fontsize=8)
         fig2.tight_layout()
         st.pyplot(fig2)
 
     # ============================================================
-    #  RÉSUMÉ TABLE
+    #  RESUME + EXPECTED MOVE AUTO
     # ============================================================
-    st.markdown("### 📊 Résumé de l'analyse Gamma")
-    df_summary = pd.DataFrame({
-        'Metric': ['NET GEX', 'Max ABS Strike', 'Call Wall', 'Put Wall', 'Zero Gamma'],
-        'Value':  [
-            f"{net_gex:.2e}",
-            max_abs_strike,
-            call_wall,
-            put_wall,
-            round(zero_gamma, 2) if zero_gamma else 'N/A'
-        ]
-    })
-    st.dataframe(df_summary, use_container_width=True, hide_index=True)
+    res_col1, res_col2 = st.columns([1, 1])
+
+    with res_col1:
+        st.markdown("**📊 Niveaux clés**")
+        df_summary = pd.DataFrame({
+            'Niveau':  ['Call Wall', 'Put Wall', 'Zero Gamma', 'Max ABS Strike', 'NET GEX'],
+            'Valeur':  [
+                int(call_wall)  if isinstance(call_wall,  (int,float)) else 'N/A',
+                int(put_wall)   if isinstance(put_wall,   (int,float)) else 'N/A',
+                zero_gamma      if zero_gamma else 'N/A',
+                int(max_abs_strike),
+                f"{net_gex:.2e}",
+            ]
+        })
+        st.dataframe(df_summary, use_container_width=True, hide_index=True)
+
+    with res_col2:
+        st.markdown("**🎯 Expected Move (ATM auto)**")
+        em_kpi1, em_kpi2, em_kpi3 = st.columns(3)
+        em_kpi1.metric("EM ±",  f"{em_value}" if em_value != '0000' else 'N/A')
+        em_kpi2.metric("EM+",   f"{em_plus}"  if em_plus  != '0000' else 'N/A', delta="haussier")
+        em_kpi3.metric("EM-",   f"{em_minus}" if em_minus != '0000' else 'N/A', delta="baissier", delta_color="inverse")
 
     # ============================================================
-    #  EXPECTED MOVE
-    # ============================================================
-    st.markdown("### 🎯 Expected Move")
-    em_plus  = "0000"
-    em_minus = "0000"
-
-    strike_input = st.number_input("Strike de référence :", min_value=0, step=1)
-
-    if strike_input > 0:
-        df_strike = df_filtered[df_filtered["Strike"] == strike_input]
-        if not df_strike.empty:
-            ls_call = df_strike["Last Sale"].iloc[0]   if "Last Sale"   in df_strike.columns else None
-            ls_put  = df_strike["Last Sale.1"].iloc[0] if "Last Sale.1" in df_strike.columns else None
-            if ls_call is not None and ls_put is not None:
-                try:
-                    total = float(ls_call) + float(ls_put)
-                    em_plus  = strike_input + total
-                    em_minus = strike_input - total
-                    em_col1, em_col2, em_col3 = st.columns(3)
-                    em_col1.metric("Last Sale C+P", f"{total:.2f}")
-                    em_col2.metric("EM+", f"{em_plus:.2f}")
-                    em_col3.metric("EM−", f"{em_minus:.2f}")
-                except Exception:
-                    st.warning("❌ Valeurs Last Sale non numériques.")
-            else:
-                st.warning("Colonnes Last Sale manquantes.")
-        else:
-            st.warning(f"Aucune donnée pour le strike {strike_input} ({closest_expiration_date}).")
-
-    # ============================================================
-    #  TEXTES COPIABLES
+    #  EXPORT COPIABLE
     # ============================================================
     top_gex_strikes = (
-        df_gex.sort_values("ABS", ascending=False)["Strike"]
-        .head(5).tolist()
+        df_gex_active.sort_values("ABS", ascending=False)["Strike"]
+        .head(4).tolist()
     )
-    while len(top_gex_strikes) < 5:
+    while len(top_gex_strikes) < 4:
         top_gex_strikes.append("0000")
 
-    copy_text = (
-        f"{call_wall}, {put_wall}, "
-        f"{round(zero_gamma, 2) if zero_gamma else 'N/A'}, "
-        f"{em_plus}, {em_minus}, "
-        f"{top_gex_strikes[0]}, {top_gex_strikes[1]}, "
-        f"{top_gex_strikes[2]}, {top_gex_strikes[3]},"
-    )
-
     def safe_int_multiply(val):
-        try:
-            return int(round(float(val) * MULTIPLIER, 0))
-        except Exception:
-            return val
+        try:    return int(round(float(val) * MULTIPLIER, 0))
+        except: return val
+
+    copy_text = (
+        f"{int(call_wall) if isinstance(call_wall,(int,float)) else 'N/A'}, "
+        f"{int(put_wall)  if isinstance(put_wall,(int,float))  else 'N/A'}, "
+        f"{zero_gamma if zero_gamma else 'N/A'}, "
+        f"{em_plus}, {em_minus}, "
+        f"{int(top_gex_strikes[0])}, {int(top_gex_strikes[1])}, "
+        f"{int(top_gex_strikes[2])}, {int(top_gex_strikes[3])}"
+    )
 
     multiplied = [
         safe_int_multiply(call_wall),
@@ -359,12 +374,12 @@ if uploaded_file is not None:
         safe_int_multiply(top_gex_strikes[3]),
     ]
 
-    st.markdown("### 📋 Export")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.text_area("Valeurs brutes", value=copy_text, height=80)
-    with c2:
-        st.text_area(f"Valeurs × {MULTIPLIER} (entiers)", value=", ".join(map(str, multiplied)), height=80)
+    st.markdown("**📋 Export**")
+    exp_c1, exp_c2 = st.columns(2)
+    with exp_c1:
+        st.text_area("Valeurs brutes", value=copy_text, height=70)
+    with exp_c2:
+        st.text_area(f"× {MULTIPLIER} (entiers)", value=", ".join(map(str, multiplied)), height=70)
 
     # ============================================================
     #  FOOTER
