@@ -65,7 +65,7 @@ mpl.rcParams.update({
 # ============================================================
 #  CONSTANTS
 # ============================================================
-MULTIPLIER = 41.36   # Ratio de conversion (ex: SPX → CAC40)
+MULTIPLIER_DEFAULT = 41.36  # Ratio QQQ → NQ Futures (change chaque jour)
 
 # ============================================================
 #  HEADER
@@ -88,6 +88,42 @@ with col_sub2:
     )
 
 st.markdown("<hr style='margin:0.5rem 0 1.5rem'>", unsafe_allow_html=True)
+
+# ============================================================
+#  RATIO QQQ → NQ (configurable - change chaque jour)
+# ============================================================
+with st.sidebar:
+    st.markdown(
+        """<div style='font-family:IBM Plex Mono,monospace;font-size:0.8rem;
+        color:#5a7a94;letter-spacing:0.06em;text-transform:uppercase;
+        margin-bottom:0.5rem;'>⚙️ Configuration</div>""",
+        unsafe_allow_html=True)
+
+    MULTIPLIER = st.number_input(
+        "Ratio QQQ → NQ Futures",
+        min_value=1.0,
+        max_value=200.0,
+        value=float(st.session_state.get("multiplier", MULTIPLIER_DEFAULT)),
+        step=0.01,
+        format="%.2f",
+        help="Ratio de conversion QQQ → NQ Futures. Change chaque jour selon le prix du NQ.",
+        key="multiplier_input"
+    )
+    st.session_state["multiplier"] = MULTIPLIER
+
+    st.markdown(
+        f"""<div style='font-family:IBM Plex Mono,monospace;font-size:0.72rem;
+        color:#2e4a5e;margin-top:0.25rem;'>
+        Valeur par défaut : {MULTIPLIER_DEFAULT}<br>
+        Exemple : NQ=21000, QQQ=510 → ratio=41.17
+        </div>""",
+        unsafe_allow_html=True)
+
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown(
+        """<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;
+        color:#2e4a5e;'>GEX ANALYSER<br>Options Flow Intelligence</div>""",
+        unsafe_allow_html=True)
 
 
 # ============================================================
