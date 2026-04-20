@@ -269,60 +269,21 @@ if uploaded_file is not None:
 
 
     # ============================================================
-    #  REGIME + KPI CARDS
-    # ============================================================
-    is_positive = net_gex > 0
-    regime_color  = GREEN if is_positive else RED
-    regime_label  = "POSITIVE GAMMA - Market Pinned 🟢" if is_positive else "NEGATIVE GAMMA - Volatile 🔴"
-    regime_glow   = "rgba(0,255,157,0.12)" if is_positive else "rgba(255,60,90,0.12)"
-
-    st.markdown(
-        f"""<div style='background:{regime_glow};border:1px solid {regime_color};
-        border-radius:8px;padding:0.75rem 1.25rem;margin-bottom:1.5rem;
-        font-family:IBM Plex Mono,monospace;font-size:0.85rem;
-        color:{regime_color};letter-spacing:0.08em;font-weight:600;'>
-        ▶ RÉGIME : {regime_label}
-        </div>""",
-        unsafe_allow_html=True
-    )
-
-    # KPI row
-    kpi_cols = st.columns(4)
-    kpis = [
-        ("CALL WALL",   call_wall,                              BLUE),
-        ("PUT WALL",    put_wall,                               RED),
-        ("ZERO GAMMA",  round(zero_gamma, 1) if zero_gamma else "N/A", ORANGE),
-        ("NET GEX",     f"{net_gex:.2e}",                       GREEN if is_positive else RED),
-    ]
-    for col, (label, value, color) in zip(kpi_cols, kpis):
-        col.markdown(
-            f"""<div style='background:{CARD_BG};border:1px solid {BORDER};
-            border-left:3px solid {color};border-radius:8px;
-            padding:1rem 1.2rem;'>
-            <div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;
-            color:{MUTED};letter-spacing:0.1em;text-transform:uppercase;
-            margin-bottom:0.5rem;'>{label}</div>
-            <div style='font-family:IBM Plex Mono,monospace;font-size:1.4rem;
-            font-weight:600;color:{color};'>{value}</div>
-            </div>""",
-            unsafe_allow_html=True
-        )
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ============================================================
-    #  FILTRAGE STRIKES ACTIFS (elimine les segments vides)
+    #  FILTRAGE STRIKES ACTIFS
     # ============================================================
     df_gex_active = df_gex[df_gex["ABS"] > 0].copy()
 
     # ============================================================
-    #  EXPECTED MOVE AUTOMATIQUE (ATM = delta call ~0.5)
+    #  EXPECTED MOVE + TARGET BUY/SELL (calculs auto)
     # ============================================================
-    em_plus  = "0000"
-    em_minus = "0000"
-    em_value = "0000"
+    em_plus  = "N/A"
+    em_minus = "N/A"
+    em_value = "N/A"
+    target_buy  = "N/A"
+    target_sell = "N/A"
+    atm_strike  = None
 
-    for col in ["Last Sale", "Last Sale.1", "Bid", "Ask", "Bid.1", "Ask.1", "Delta"]:
+    for col in ["Last Sale", "Last Sale.1", "Bid", "Ask", "Bid.1", "Ask.1", "Delta", "Delta.1", "IV", "IV.1"]:
         if col in df_filtered.columns:
             df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce')
 
@@ -345,6 +306,73 @@ if uploaded_file is not None:
             em_value = round(mid_c + mid_p, 2)
             em_plus  = round(atm_strike + em_value, 2)
             em_minus = round(atm_strike - em_value, 2)
+
+    # Target Buy  = strike call dont le delta est le plus proche de 0.25
+    df_calls_tb = df_filtered[df_filtered["Delta"].notna() & (df_filtered["Delta"] > 0) & (df_filtered["IV"] > 0)]
+    if not df_calls_tb.empty:
+        target_buy = int(df_calls_tb.iloc[(df_calls_tb["Delta"] - 0.25).abs().argsort().iloc[0]]["Strike"])
+
+    # Target Sell = strike put dont le delta est le plus proche de -0.25
+    df_puts_ts = df_filtered[df_filtered["Delta.1"].notna() & (df_filtered["Delta.1"] < 0) & (df_filtered["IV.1"] > 0)]
+    if not df_puts_ts.empty:
+        target_sell = int(df_puts_ts.iloc[(df_puts_ts["Delta.1"].abs() - 0.25).abs().argsort().iloc[0]]["Strike"])
+
+    # ============================================================
+    #  RÉSUMÉ PRINCIPAL — 8 métriques clés
+    # ============================================================
+    is_positive  = net_gex > 0
+    regime_color = GREEN if is_positive else RED
+    regime_label = "POSITIVE GAMMA" if is_positive else "NEGATIVE GAMMA"
+    regime_icon  = "🟢 Market Pinned" if is_positive else "🔴 Volatile"
+    net_gex_m    = round(net_gex / 1e6, 2)
+    regime_glow  = "rgba(0,255,157,0.08)" if is_positive else "rgba(255,60,90,0.08)"
+
+    # Banniere regime
+    st.markdown(
+        f"<div style='background:{regime_glow};border:1px solid {regime_color}33;"
+        f"border-left:4px solid {regime_color};border-radius:8px;"
+        f"padding:0.6rem 1.2rem;margin-bottom:1rem;"
+        f"font-family:IBM Plex Mono,monospace;font-size:0.82rem;"
+        f"color:{regime_color};letter-spacing:0.1em;font-weight:700;'>"
+        f"▶ {regime_label} &nbsp;·&nbsp; {regime_icon} &nbsp;·&nbsp; "
+        f"NET GEX : <span style='font-size:1rem;'>{net_gex_m:,.0f} M</span>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+
+    # Ligne 1 : 4 niveaux GEX
+    def kpi_card(label, value, color, sub=""):
+        return (
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {color};border-radius:8px;"
+            f"padding:0.85rem 1rem;height:100%;'>"
+            f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.65rem;"
+            f"color:{MUTED};letter-spacing:0.1em;text-transform:uppercase;"
+            f"margin-bottom:0.4rem;'>{label}</div>"
+            f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.35rem;"
+            f"font-weight:700;color:{color};'>{value}</div>"
+            f"<div style='font-size:0.7rem;color:{MUTED};margin-top:0.2rem;'>{sub}</div>"
+            f"</div>"
+        )
+
+    r1c1, r1c2, r1c3, r1c4 = st.columns(4)
+    r1c1.markdown(kpi_card("Call Wall",  int(call_wall) if isinstance(call_wall,(int,float)) else "N/A",  BLUE,   "Résistance GEX"), unsafe_allow_html=True)
+    r1c2.markdown(kpi_card("Put Wall",   int(put_wall)  if isinstance(put_wall,(int,float))  else "N/A",  RED,    "Support GEX"),    unsafe_allow_html=True)
+    r1c3.markdown(kpi_card("Zero Gamma", zero_gamma if zero_gamma else "N/A",                             ORANGE, "Flip regime"),    unsafe_allow_html=True)
+    r1c4.markdown(kpi_card("Net GEX",    f"{net_gex_m:,.0f} M",                                          regime_color, regime_label), unsafe_allow_html=True)
+
+    st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
+
+    # Ligne 2 : EM + Target Buy/Sell
+    r2c1, r2c2, r2c3, r2c4 = st.columns(4)
+    r2c1.markdown(kpi_card("Expected Move ±", f"{em_value}" if em_value != "N/A" else "N/A", GREEN, f"ATM {int(atm_strike) if atm_strike else '—'}"), unsafe_allow_html=True)
+    r2c2.markdown(kpi_card("EM+  /  EM−",
+        f"{em_plus} / {em_minus}" if em_plus != "N/A" else "N/A",
+        GREEN, "Zone de prix attendue"), unsafe_allow_html=True)
+    r2c3.markdown(kpi_card("Target Buy",  f"{target_buy}",  "#34d399", "Call delta 25 — IV"), unsafe_allow_html=True)
+    r2c4.markdown(kpi_card("Target Sell", f"{target_sell}", "#f87171", "Put delta 25 — IV"),  unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
 
     # ============================================================
     #  GRAPHIQUES
