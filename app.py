@@ -1783,3 +1783,247 @@ if uploaded_file is not None:
             top_bear["Bull_Score"] = top_bear["Bull_Score"].apply(lambda x: f"{x*100:.1f}%")
             st.dataframe(top_bear.style.format({"Vol_C":"{:,.0f}","Vol_P":"{:,.0f}"}),
                          use_container_width=True, hide_index=True)
+
+
+# ============================================================
+#  EXPECTED MOVE AUTO — TOUTES EXPIRATIONS
+# ============================================================
+st.markdown("---")
+st.markdown("### 📐 Expected Move — Toutes Expirations")
+
+if uploaded_file is not None:
+
+    # Calcul EM pour toutes les expirations
+    em_results = []
+    current_dt = pd.Timestamp(datetime.now().date())
+
+    for exp_dt, group in df.groupby("Expiration Date_dt"):
+        for col in ["Strike","Last Sale","Last Sale.1","Bid","Ask","Bid.1","Ask.1",
+                    "IV","IV.1","Delta","Delta.1"]:
+            group[col] = pd.to_numeric(group[col], errors='coerce')
+
+        g_atm = group[group["Delta"].notna() & (group["Delta"] > 0)].copy()
+        if g_atm.empty: continue
+
+        # ATM = strike dont le delta call est le plus proche de 0.5
+        atm_row    = g_atm.iloc[(g_atm["Delta"] - 0.5).abs().argsort().iloc[0]]
+        atm_strike = atm_row["Strike"]
+        iv_atm     = atm_row["IV"]
+        T_days     = max((exp_dt - current_dt).days, 1)
+
+        # Recuperer la ligne put du meme strike
+        put_row = group[group["Strike"] == atm_strike]
+
+        ls_c  = atm_row["Last Sale"]
+        ls_p  = put_row["Last Sale.1"].values[0]  if len(put_row) > 0 else np.nan
+        bid_c = atm_row["Bid"];  ask_c = atm_row["Ask"]
+        bid_p = put_row["Bid.1"].values[0]  if len(put_row) > 0 else np.nan
+        ask_p = put_row["Ask.1"].values[0]  if len(put_row) > 0 else np.nan
+
+        # EM Straddle (Last Sale)
+        em_ls  = round(ls_c  + ls_p,  2) if pd.notna(ls_c)  and pd.notna(ls_p)  else np.nan
+        # EM Midpoint Bid/Ask (plus precis)
+        mid_c  = (bid_c+ask_c)/2 if pd.notna(bid_c) and pd.notna(ask_c) else np.nan
+        mid_p  = (bid_p+ask_p)/2 if pd.notna(bid_p) and pd.notna(ask_p) else np.nan
+        em_mid = round(mid_c + mid_p, 2) if pd.notna(mid_c) and pd.notna(mid_p) else np.nan
+        # EM formule IV : IV * Spot * sqrt(T/365)
+        em_iv  = round(iv_atm * atm_strike * np.sqrt(T_days/365), 2) \
+                 if pd.notna(iv_atm) and iv_atm > 0 else np.nan
+
+        em_use = em_mid if pd.notna(em_mid) else em_ls   # preferer midpoint
+
+        em_results.append({
+            "exp_dt":    exp_dt,
+            "label":     exp_dt.strftime('%a %b %d'),
+            "T_days":    T_days,
+            "atm":       int(atm_strike),
+            "iv_atm":    iv_atm,
+            "em_straddle": em_ls,
+            "em_mid":    em_mid,
+            "em_iv":     em_iv,
+            "em_use":    em_use,
+            "em_plus":   round(atm_strike + em_use, 2) if pd.notna(em_use) else None,
+            "em_minus":  round(atm_strike - em_use, 2) if pd.notna(em_use) else None,
+            "em_pct":    round(em_use / atm_strike * 100, 2) if pd.notna(em_use) else None,
+        })
+
+    df_em = pd.DataFrame(em_results)
+
+    # --- Methode selecteur ---
+    em_method = st.radio(
+        "Méthode de calcul",
+        ["Midpoint Bid/Ask (recommandé)", "Last Sale Straddle", "Formule IV Black-Scholes"],
+        horizontal=True, key="em_method"
+    )
+    method_col = {"Midpoint Bid/Ask (recommandé)": "em_mid",
+                  "Last Sale Straddle":             "em_straddle",
+                  "Formule IV Black-Scholes":        "em_iv"}[em_method]
+
+    df_em["em_sel"]    = df_em[method_col]
+    df_em["em_plus_s"] = df_em["atm"] + df_em["em_sel"]
+    df_em["em_minus_s"]= df_em["atm"] - df_em["em_sel"]
+    df_em["em_pct_s"]  = df_em["em_sel"] / df_em["atm"] * 100
+
+    # --- KPI expiration la plus proche ---
+    row0 = df_em.iloc[0]
+    k1, k2, k3, k4, k5 = st.columns(5)
+    for col_k, label, value, color in [
+        (k1, "EXPIRY PROCHE",  row0["label"],                  ORANGE),
+        (k2, "ATM STRIKE",     f"{row0['atm']}",               BLUE),
+        (k3, "EXPECTED MOVE",  f"±{row0['em_sel']:.2f}",       GREEN),
+        (k4, "EM+",            f"{row0['em_plus_s']:.2f}",     GREEN),
+        (k5, "EM−",            f"{row0['em_minus_s']:.2f}",    RED),
+    ]:
+        col_k.markdown(
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {color};border-radius:8px;padding:1rem 1.2rem;'>"
+            f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;color:{MUTED};"
+            f"letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;'>{label}</div>"
+            f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.3rem;"
+            f"font-weight:600;color:{color};'>{value}</div>"
+            f"</div>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    tab_em1, tab_em2, tab_em3 = st.tabs([
+        "📊 EM par Expiration", "🌡️ Courbe de Volatilité", "📋 Tableau complet"
+    ])
+
+    with tab_em1:
+        fig_em, (axe1, axe2) = plt.subplots(2, 1, figsize=(13, 8), sharex=True)
+
+        x   = range(len(df_em))
+        lbl = df_em["label"].tolist()
+
+        # Graphique EM± par expiration (zone de prix attendue)
+        axe1.fill_between(x,
+                          df_em["em_minus_s"].fillna(df_em["atm"]),
+                          df_em["em_plus_s"].fillna(df_em["atm"]),
+                          alpha=0.2, color=BLUE, label="Zone EM")
+        axe1.plot(x, df_em["em_plus_s"],  color=GREEN, linewidth=2,
+                  marker='o', markersize=5, label="EM+")
+        axe1.plot(x, df_em["em_minus_s"], color=RED,   linewidth=2,
+                  marker='o', markersize=5, label="EM-")
+        axe1.plot(x, df_em["atm"],        color=ORANGE, linewidth=1.5,
+                  linestyle='--', marker='s', markersize=4, label="ATM Strike")
+
+        # Annotations
+        for i, row in df_em.iterrows():
+            if pd.notna(row["em_sel"]):
+                axe1.annotate(f"±{row['em_sel']:.1f}",
+                    xy=(i, row["em_plus_s"]),
+                    xytext=(0, 6), textcoords='offset points',
+                    fontsize=7, color=GREEN, ha='center')
+
+        axe1.set_xticks(list(x))
+        axe1.set_xticklabels(lbl, rotation=30, ha='right', fontsize=8)
+        axe1.set_title(f"EXPECTED MOVE PAR EXPIRATION — {em_method}")
+        axe1.set_ylabel("Prix QQQ")
+        axe1.legend(fontsize=8)
+
+        # EM en % par expiration
+        bar_colors_em = [GREEN if v < 2 else (ORANGE if v < 4 else RED)
+                         for v in df_em["em_pct_s"].fillna(0)]
+        axe2.bar(x, df_em["em_pct_s"].fillna(0), color=bar_colors_em, alpha=0.85)
+        axe2.set_xticks(list(x))
+        axe2.set_xticklabels(lbl, rotation=30, ha='right', fontsize=8)
+        axe2.set_title("EXPECTED MOVE EN % DU SPOT")
+        axe2.set_ylabel("EM (%)")
+        axe2.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y:.1f}%'))
+        axe2.axhline(y=2, color=ORANGE, linestyle=':', linewidth=1, alpha=0.7, label='2%')
+        axe2.axhline(y=4, color=RED,    linestyle=':', linewidth=1, alpha=0.7, label='4%')
+        axe2.legend(fontsize=8)
+
+        fig_em.tight_layout()
+        st.pyplot(fig_em)
+
+    with tab_em2:
+        # Term structure de la IV ATM
+        fig_ts, (axts1, axts2) = plt.subplots(1, 2, figsize=(13, 5))
+
+        df_em_valid = df_em[df_em["iv_atm"].notna() & (df_em["iv_atm"] > 0)]
+
+        axts1.plot(df_em_valid["T_days"], df_em_valid["iv_atm"]*100,
+                   color=BLUE, linewidth=2, marker='o', markersize=6)
+        for _, row in df_em_valid.iterrows():
+            axts1.annotate(row["label"],
+                xy=(row["T_days"], row["iv_atm"]*100),
+                xytext=(3, 4), textcoords='offset points',
+                fontsize=7, color=MUTED)
+        axts1.set_title("TERM STRUCTURE IV ATM")
+        axts1.set_xlabel("Jours avant expiration")
+        axts1.set_ylabel("IV ATM (%)")
+        axts1.yaxis.set_major_formatter(plt.FuncFormatter(lambda y,_: f'{y:.1f}%'))
+        axts1.grid(True, alpha=0.3)
+
+        # EM vs T_days : doit etre proportionnel a sqrt(T)
+        t_range = np.linspace(1, df_em["T_days"].max()+2, 100)
+        iv_ref  = df_em_valid["iv_atm"].mean()
+        spot_ref= df_em_valid["atm"].mean()
+        em_theory = iv_ref * spot_ref * np.sqrt(t_range/365)
+
+        axts2.scatter(df_em_valid["T_days"], df_em_valid["em_sel"],
+                      color=ORANGE, s=80, zorder=5, label="EM réel")
+        axts2.plot(t_range, em_theory, color=BLUE, linewidth=1.5,
+                   linestyle='--', alpha=0.7, label=f"Théorie sqrt(T) IV={iv_ref*100:.1f}%")
+        for _, row in df_em_valid.iterrows():
+            if pd.notna(row["em_sel"]):
+                axts2.annotate(row["label"],
+                    xy=(row["T_days"], row["em_sel"]),
+                    xytext=(3,4), textcoords='offset points',
+                    fontsize=7, color=MUTED)
+        axts2.set_title("EM RÉEL vs THÉORIE sqrt(T)")
+        axts2.set_xlabel("Jours avant expiration")
+        axts2.set_ylabel("Expected Move ($)")
+        axts2.legend(fontsize=8)
+
+        fig_ts.tight_layout()
+        st.pyplot(fig_ts)
+
+        st.markdown(
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {BLUE};border-radius:8px;"
+            f"padding:0.75rem 1.25rem;font-family:IBM Plex Mono,monospace;"
+            f"font-size:0.82rem;color:{TEXT};'>"
+            f"<b style='color:{BLUE};'>LECTURE TERM STRUCTURE :</b> "
+            f"Si la courbe IV est en backwardation (court terme > long terme) → marche stresse, "
+            f"event imminent. En contango (court < long) → calme, normalite. "
+            f"EM reel au-dessus de la theorie sqrt(T) → marche pricant une surprise."
+            f"</div>", unsafe_allow_html=True)
+
+    with tab_em3:
+        # Tableau complet toutes methodes
+        df_tbl = df_em[["label","T_days","atm","iv_atm",
+                         "em_straddle","em_mid","em_iv",
+                         "em_plus_s","em_minus_s","em_pct_s"]].copy()
+        df_tbl.columns = ["Expiration","Jours","ATM","IV ATM",
+                          "EM Last Sale","EM Midpoint","EM Formule IV",
+                          "EM+","EM−","EM %"]
+        df_tbl["IV ATM"] = df_tbl["IV ATM"].apply(lambda x: f"{x*100:.2f}%" if pd.notna(x) else "N/A")
+        df_tbl["EM %"]   = df_tbl["EM %"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "N/A")
+
+        st.dataframe(df_tbl.style.format({
+            "EM Last Sale":"{:.2f}", "EM Midpoint":"{:.2f}",
+            "EM Formule IV":"{:.2f}", "EM+":"{:.2f}", "EM−":"{:.2f}"
+        }), use_container_width=True, hide_index=True)
+
+        # Export texte copiable (format de votre app originale)
+        st.markdown("**Export copiable (EM+ / EM− par expiration)**")
+        lines_em = []
+        for _, row in df_em.iterrows():
+            if pd.notna(row["em_sel"]):
+                lines_em.append(
+                    f"{row['label']} | ATM {row['atm']} | "
+                    f"EM ±{row['em_sel']:.2f} | EM+ {row['em_plus_s']:.2f} | EM- {row['em_minus_s']:.2f}"
+                )
+        st.text_area("Texte copiable", value="\n".join(lines_em), height=200)
+
+        # Multiplier (comme dans app originale)
+        st.markdown(f"**Export multiplié × {MULTIPLIER} (entiers)**")
+        lines_mult = []
+        for _, row in df_em.iterrows():
+            if pd.notna(row["em_plus_s"]) and pd.notna(row["em_minus_s"]):
+                ep = int(round(row["em_plus_s"]  * MULTIPLIER))
+                em = int(round(row["em_minus_s"] * MULTIPLIER))
+                lines_mult.append(f"{row['label']} | EM+ {ep} | EM- {em}")
+        st.text_area(f"Texte multiplié × {MULTIPLIER}", value="\n".join(lines_mult), height=200)
