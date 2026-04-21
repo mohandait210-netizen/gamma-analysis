@@ -1080,15 +1080,35 @@ if uploaded_file is not None:
         atm_strike = atm_row["Strike"]
         iv_atm     = atm_row["IV"]
         T_days     = max((exp_dt - current_dt).days, 1)
-        put_row = group[group["Strike"] == atm_strike]
+       put_row = group[group["Strike"] == atm_strike]
 
-        ls_c  = atm_row.get("Last Sale", np.nan)
-        ls_p  = put_row.get("Last Sale.1", np.nan) if not put_row.empty else np.nan
-        bid_c = atm_row.get("Bid", np.nan);  ask_c = atm_row.get("Ask", np.nan)
-        bid_p = put_row["Bid.1"].values[0]  if len(put_row) > 0 else np.nan
-        ask_p = put_row["Ask.1"].values[0]  if len(put_row) > 0 else np.nan
+# Last Sale call (scalaire) — atm_row est déjà une Series de la ligne ATM
+ls_c = atm_row.get("Last Sale", np.nan)
 
-        em_ls  = round(ls_c  + ls_p,  2) if pd.notna(ls_c)  and pd.notna(ls_p)  else np.nan
+# Last Sale put : extraire un scalaire si la ligne existe et la colonne est présente
+if (not put_row.empty) and ("Last Sale.1" in put_row.columns):
+    # take the first matching row's value safely
+    ls_p = put_row["Last Sale.1"].iloc[0]
+else:
+    ls_p = np.nan
+
+# Bid/Ask call scalars
+bid_c = atm_row.get("Bid", np.nan)
+ask_c = atm_row.get("Ask", np.nan)
+
+# Bid/Ask put scalars — safe extraction
+if (not put_row.empty) and ("Bid.1" in put_row.columns):
+    bid_p = put_row["Bid.1"].iloc[0]
+else:
+    bid_p = np.nan
+
+if (not put_row.empty) and ("Ask.1" in put_row.columns):
+    ask_p = put_row["Ask.1"].iloc[0]
+else:
+    ask_p = np.nan
+
+# Now compute EM safely — pd.notna applied to scalars is fine
+em_ls  = round(float(ls_c) + float(ls_p),  2) if pd.notna(ls_c) and pd.notna(ls_p) else np.nan
         mid_c  = (bid_c+ask_c)/2 if pd.notna(bid_c) and pd.notna(ask_c) else np.nan
         mid_p  = (bid_p+ask_p)/2 if pd.notna(bid_p) and pd.notna(ask_p) else np.nan
         em_mid = round(mid_c + mid_p, 2) if pd.notna(mid_c) and pd.notna(mid_p) else np.nan
