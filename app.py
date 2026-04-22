@@ -8,8 +8,7 @@ from pathlib import Path
 from scipy.stats import norm as sp_norm
 import plotly.graph_objects as go
 import plotly.express as px
-from plotly_charts import plot_gex_curve, plot_iv_skew, plot_dex_curve, plot_volume_sentiment, plot_expected_move_term_structure
-
+from ploty_chart import plot_gex_curve, plot_iv_skew, plot_dex_curve, plot_volume_sentiment, plot_expected_move_term_structure
 # ===========================================================
 #  PAGE CONFIG
 # ===========================================================
