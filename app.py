@@ -6,6 +6,9 @@ import numpy as np
 from datetime import datetime
 from pathlib import Path
 from scipy.stats import norm as sp_norm
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly_charts import plot_gex_curve, plot_iv_skew, plot_dex_curve, plot_volume_sentiment, plot_expected_move_term_structure
 
 # ===========================================================
 #  PAGE CONFIG
@@ -382,33 +385,16 @@ if uploaded_file is not None:
 
     chart_col1, chart_col2 = st.columns(2)
 
-    # -- Courbe GEX --
+    # -- Courbe GEX (Plotly interactive) --
     with chart_col1:
-        fig, ax = plt.subplots(figsize=(8, 4.5))
-        ax.fill_between(df_top_abs["Strike"], df_top_abs["GEX"], 0,
-                        where=df_top_abs["GEX"] >= 0,
-                        alpha=0.15, color=GREEN, interpolate=True)
-        ax.fill_between(df_top_abs["Strike"], df_top_abs["GEX"], 0,
-                        where=df_top_abs["GEX"] < 0,
-                        alpha=0.15, color=RED, interpolate=True)
-        ax.plot(df_top_abs["Strike"], df_top_abs["GEX"],
-                marker='o', markersize=3, linestyle='-',
-                color=BLUE, linewidth=1.5, label='GEX')
-        ax.axhline(y=0, color=BORDER, linestyle="--", linewidth=1)
-
-        if isinstance(call_wall, (int, float)):
-            ax.axvline(x=call_wall,  color=BLUE,   linestyle='--', linewidth=1.2, label=f'Call Wall ({int(call_wall)})')
-        if isinstance(put_wall, (int, float)):
-            ax.axvline(x=put_wall,   color=RED,    linestyle='--', linewidth=1.2, label=f'Put Wall ({int(put_wall)})')
-        if zero_gamma is not None:
-            ax.axvline(x=zero_gamma, color=ORANGE, linestyle='--', linewidth=1.2, label=f'Zero Gamma ({zero_gamma})')
-
-        ax.set_title(f"GAMMA EXPOSURE CURVE - {closest_expiration_date}")
-        ax.set_xlabel("Strike Price")
-        ax.set_ylabel("GEX")
-        ax.legend(fontsize=8)
-        fig.tight_layout()
-        st.pyplot(fig)
+        fig_gex = plot_gex_curve(
+            df_top_abs,
+            call_wall,
+            put_wall,
+            zero_gamma,
+            f"GAMMA EXPOSURE CURVE - {closest_expiration_date}"
+        )
+        st.plotly_chart(fig_gex, use_container_width=True, config={"displayModeBar": True})
 
     # -- Calls vs Puts --
     with chart_col2:
