@@ -181,36 +181,67 @@ st.markdown("""
 
 
 # ============================================================
-#  FILE UPLOAD
+#  YAHOO FINANCE DATA (replaces CSV)
 # ============================================================
-uploaded_file = st.file_uploader("📂  Téléverse ton fichier CSV", type=["csv"])
+import yfinance as yf
+from scipy.stats import norm
+import numpy as np
+from datetime import datetime
 
-if uploaded_file is not None:
+def bs_gamma(S, K, T, r, sigma):
+    if T <= 0 or sigma <= 0:
+        return 0
+    d1 = (np.log(S/K) + (r + 0.5*sigma**2)*T) / (sigma*np.sqrt(T))
+    return norm.pdf(d1) / (S * sigma * np.sqrt(T))
 
-    # --- Lecture robuste ---
-    try:
-        df = pd.read_csv(uploaded_file, delimiter=",", header=2)
-    except Exception as e:
-        st.error(f"❌ Erreur de lecture du CSV : {e}")
-        st.stop()
+ticker_symbol = st.text_input("Ticker", "QQQ")
+ticker = yf.Ticker(ticker_symbol)
 
-    required_cols = ["Expiration Date", "Strike", "Gamma", "Open Interest", "Gamma.1", "Open Interest.1"]
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        st.error(f"❌ Colonnes manquantes dans le CSV : {missing}")
-        st.stop()
+expirations = ticker.options
+closest_expiration = expirations[0]
 
-    # --- Dates ---
-    current_date_dt = pd.to_datetime(datetime.now().date())
-    df['Expiration Date_dt'] = pd.to_datetime(df['Expiration Date'], errors='coerce')
-    unique_expiration_dates = df['Expiration Date_dt'].dropna().unique()
+opt_chain = ticker.option_chain(closest_expiration)
+calls = opt_chain.calls
+puts = opt_chain.puts
 
-    if len(unique_expiration_dates) == 0:
-        st.error("❌ Aucune date d'expiration valide trouvée.")
-        st.stop()
+spot_price = ticker.history(period="1d")["Close"].iloc[-1]
 
-    closest_expiration_date_dt = min(unique_expiration_dates, key=lambda d: abs(d - current_date_dt))
-    closest_expiration_date = closest_expiration_date_dt.strftime('%a %b %d %Y')
+risk_free_rate = 0.05
+expiration_dt = datetime.strptime(closest_expiration, "%Y-%m-%d")
+T = (expiration_dt - datetime.now()).days / 365
+
+def build_side(df, is_put=False):
+    rows = []
+    for _, row in df.iterrows():
+        K = row["strike"]
+        iv = row["impliedVolatility"]
+        oi = row["openInterest"]
+        last = row["lastPrice"]
+
+        gamma = bs_gamma(spot_price, K, T, risk_free_rate, iv)
+
+        if is_put:
+            rows.append([K, None, None, gamma, oi, None, last])
+        else:
+            rows.append([K, gamma, oi, None, None, last, None])
+
+    return pd.DataFrame(rows, columns=[
+        "Strike",
+        "Gamma",
+        "Open Interest",
+        "Gamma.1",
+        "Open Interest.1",
+        "Last Sale",
+        "Last Sale.1"
+    ])
+
+df_calls = build_side(calls, is_put=False)
+df_puts = build_side(puts, is_put=True)
+
+df_filtered = pd.concat([df_calls, df_puts]).groupby("Strike").first().reset_index()
+
+df_filtered["Expiration Date"] = closest_expiration
+closest_expiration_date = expiration_dt.strftime('%a %b %d %Y')
 
     # --- Filtrage & calculs GEX ---
     df_filtered = df[df['Expiration Date_dt'] == closest_expiration_date_dt].copy()
