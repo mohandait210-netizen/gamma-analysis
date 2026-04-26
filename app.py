@@ -86,6 +86,10 @@ df_gex['ABS_GEX'] = df_gex['GEX'].abs()
 # Calcul du NET_GEX (somme de tous les GEX)
 net_gex = df_gex['GEX'].sum()
 
+# ZERO GAMMA
+df_gex['ABS_GEX'] = df_gex['GEX'].abs()
+df_gex_sorted = df_gex.sort_values("Strike")
+zero_gamma = np.interp(0, df_gex_sorted["GEX"], df_gex_sorted["Strike"])
 # Trouver le Strike avec le plus grand ABS
 max_abs_strike_row = df_gex.loc[df_gex['ABS'].idxmax()]
 max_abs_strike = max_abs_strike_row['Strike']
@@ -166,6 +170,7 @@ if isinstance(call_wall, (int, float)) and min_plot_strike <= call_wall <= max_p
     plt.axvline(x=call_wall, color='green', linestyle='--', linewidth=2, label='CALL_WALL')
 if isinstance(put_wall, (int, float)) and min_plot_strike <= put_wall <= max_plot_strike:
     plt.axvline(x=put_wall, color='red', linestyle='--', linewidth=2, label='PUT_WALL')
+    plt.axvline(zero_gamma, color="orange", linestyle="--", linewidth=2, label="ZERO GAMMA")
 # --- End of modifications ---
 
 plt.legend()
@@ -206,7 +211,7 @@ plt.show()
 
 # --- Start of new GEX Calls and GEX Puts grouped bar chart ---
 plt.figure(figsize=(14, 7))
-bar_width = 0.35
+bar_width = 2
 index = df_plot_gex_components['Strike']
 
 bar1 = plt.bar(index - bar_width/2, df_plot_gex_components['GEX_Calls'], bar_width, label='GEX Calls', color='skyblue')
@@ -215,7 +220,7 @@ bar2 = plt.bar(index + bar_width/2, df_plot_gex_components['GEX_Puts'], bar_widt
 plt.xlabel("Strike Price")
 plt.ylabel("Gamma Exposure (GEX)")
 plt.title(f"GEX Calls et GEX Puts par Strike pour la date d'expiration la plus proche ({closest_expiration_date})")
-plt.grid(True, axis='y')
+plt.grid(True)
 
 # Ajuster les ticks de l'axe X pour une meilleure lisibilité
 if len(df_plot_gex_components) > 20:
@@ -238,8 +243,8 @@ plt.show()
 
 # --- Summary table display (already updated in previous turn) ---
 # Créer un DataFrame pour afficher les résultats
-summary_data = {'Metric': ['Strike (Max ABS)', 'NET_GEX', 'CALL_WALL', 'PUT_WALL'],
-                'Value': [max_abs_strike, net_gex, call_wall, put_wall]}
+summary_data = {'Metric': ['NET_GEX', 'ABS', 'CALL_WALL', 'PUT_WALL', "ZERO GAMMA"],
+                'Value': [net_gex, max_abs_strike,call_wall, put_wall, round(zero_gamma, 2)]}
 df_summary = pd.DataFrame(summary_data)
 
 # Formater le DataFrame pour l'affichage
