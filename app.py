@@ -6,8 +6,6 @@ import numpy as np
 from datetime import datetime
 from pathlib import Path
 from scipy.stats import norm as sp_norm
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 # ===========================================================
 #  PAGE CONFIG
@@ -386,62 +384,31 @@ if uploaded_file is not None:
 
     # -- Courbe GEX --
     with chart_col1:
-        # Graphique GEX interactif avec Plotly
-        fig = go.Figure()
+        fig, ax = plt.subplots(figsize=(8, 4.5))
+        ax.fill_between(df_top_abs["Strike"], df_top_abs["GEX"], 0,
+                        where=df_top_abs["GEX"] >= 0,
+                        alpha=0.15, color=GREEN, interpolate=True)
+        ax.fill_between(df_top_abs["Strike"], df_top_abs["GEX"], 0,
+                        where=df_top_abs["GEX"] < 0,
+                        alpha=0.15, color=RED, interpolate=True)
+        ax.plot(df_top_abs["Strike"], df_top_abs["GEX"],
+                marker='o', markersize=3, linestyle='-',
+                color=BLUE, linewidth=1.5, label='GEX')
+        ax.axhline(y=0, color=BORDER, linestyle="--", linewidth=1)
 
-        # Fill positif
-        df_pos = df_top_abs[df_top_abs["GEX"] >= 0]
-        if not df_pos.empty:
-            fig.add_trace(go.Scatter(
-                x=df_pos["Strike"], y=df_pos["GEX"],
-                fill="tozeroy", fillcolor="rgba(0,255,157,0.15)",
-                mode="lines", line=dict(color=BLUE, width=1.5),
-                name="GEX", hovertemplate="Strike: %{x}<br>GEX: %{y:,.0f}<extra></extra>"
-            ))
-        # Fill negatif
-        df_neg = df_top_abs[df_top_abs["GEX"] < 0]
-        if not df_neg.empty:
-            fig.add_trace(go.Scatter(
-                x=df_neg["Strike"], y=df_neg["GEX"],
-                fill="tozeroy", fillcolor="rgba(255,60,90,0.15)",
-                mode="lines", line=dict(color=BLUE, width=1.5),
-                name="GEX", hovertemplate="Strike: %{x}<br>GEX: %{y:,.0f}<extra></extra>", showlegend=False
-            ))
-        # Points interactifs
-        fig.add_trace(go.Scatter(
-            x=df_top_abs["Strike"], y=df_top_abs["GEX"],
-            mode="markers", marker=dict(color=BLUE, size=6),
-            name="Points GEX", showlegend=False,
-            hovertemplate="<b>Strike:</b> %{x}<br><b>GEX:</b> %{y:,.0f}<extra></extra>"
-        ))
-        # Ligne zéro
-        fig.add_hline(y=0, line_dash="dash", line_color=BORDER, line_width=1)
-        # Lignes verticales
         if isinstance(call_wall, (int, float)):
-            fig.add_vline(x=call_wall, line_dash="dash", line_color=BLUE, line_width=1.2,
-                          annotation_text=f"Call Wall ({int(call_wall)})", annotation_position="top")
+            ax.axvline(x=call_wall,  color=BLUE,   linestyle='--', linewidth=1.2, label=f'Call Wall ({int(call_wall)})')
         if isinstance(put_wall, (int, float)):
-            fig.add_vline(x=put_wall, line_dash="dash", line_color=RED, line_width=1.2,
-                          annotation_text=f"Put Wall ({int(put_wall)})", annotation_position="top")
+            ax.axvline(x=put_wall,   color=RED,    linestyle='--', linewidth=1.2, label=f'Put Wall ({int(put_wall)})')
         if zero_gamma is not None:
-            fig.add_vline(x=zero_gamma, line_dash="dash", line_color=ORANGE, line_width=1.2,
-                          annotation_text=f"Zero Gamma ({zero_gamma})", annotation_position="top")
-        # Layout
-        fig.update_layout(
-            title=dict(text=f"GAMMA EXPOSURE CURVE - {closest_expiration_date}", font=dict(color=TEXT, size=13)),
-            xaxis_title="Strike Price",
-            yaxis_title="GEX",
-            plot_bgcolor=CARD_BG,
-            paper_bgcolor=DARK_BG,
-            font=dict(color=TEXT, family="monospace"),
-            xaxis=dict(gridcolor=BORDER, tickfont=dict(color=MUTED)),
-            yaxis=dict(gridcolor=BORDER, tickfont=dict(color=MUTED)),
-            legend=dict(font=dict(size=9), bgcolor=CARD_BG, bordercolor=BORDER, borderwidth=1),
-            margin=dict(l=50, r=20, t=50, b=40),
-            hovermode="closest",
-            dragmode="zoom"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+            ax.axvline(x=zero_gamma, color=ORANGE, linestyle='--', linewidth=1.2, label=f'Zero Gamma ({zero_gamma})')
+
+        ax.set_title(f"GAMMA EXPOSURE CURVE - {closest_expiration_date}")
+        ax.set_xlabel("Strike Price")
+        ax.set_ylabel("GEX")
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        st.pyplot(fig)
 
     # -- Calls vs Puts --
     with chart_col2:
@@ -454,44 +421,17 @@ if uploaded_file is not None:
         )
         df_gex_comp = df_gex_comp[df_gex_comp['Strike'].isin(df_top_abs['Strike'])]
 
-        # Graphique Calls vs Puts interactif avec Plotly
-        fig2 = go.Figure()
+        fig2, ax2 = plt.subplots(figsize=(8, 4.5))
         bw = 0.4
-        fig2.add_trace(go.Bar(
-            x=df_gex_comp["Strike"] - bw/2,
-            y=df_gex_comp["GEX_Calls"],
-            width=bw,
-            name="GEX Calls",
-            marker_color=BLUE,
-            opacity=0.85,
-            hovertemplate="<b>Strike:</b> %{x}<br><b>GEX Calls:</b> %{y:,.0f}<extra></extra>"
-        ))
-        fig2.add_trace(go.Bar(
-            x=df_gex_comp["Strike"] + bw/2,
-            y=df_gex_comp["GEX_Puts"],
-            width=bw,
-            name="GEX Puts",
-            marker_color=RED,
-            opacity=0.85,
-            hovertemplate="<b>Strike:</b> %{x}<br><b>GEX Puts:</b> %{y:,.0f}<extra></extra>"
-        ))
-        fig2.add_hline(y=0, line_dash="dash", line_color=BORDER, line_width=1)
-        fig2.update_layout(
-            title=dict(text=f"CALLS vs PUTS - {closest_expiration_date}", font=dict(color=TEXT, size=13)),
-            xaxis_title="Strike Price",
-            yaxis_title="GEX",
-            barmode="relative",
-            plot_bgcolor=CARD_BG,
-            paper_bgcolor=DARK_BG,
-            font=dict(color=TEXT, family="monospace"),
-            xaxis=dict(gridcolor=BORDER, tickfont=dict(color=MUTED)),
-            yaxis=dict(gridcolor=BORDER, tickfont=dict(color=MUTED)),
-            legend=dict(font=dict(size=9), bgcolor=CARD_BG, bordercolor=BORDER, borderwidth=1),
-            margin=dict(l=50, r=20, t=50, b=40),
-            hovermode="closest",
-            dragmode="zoom"
-        )
-        st.plotly_chart(fig2, use_container_width=True)
+        ax2.bar(df_gex_comp['Strike'] - bw/2, df_gex_comp['GEX_Calls'],
+                bw, label='GEX Calls', color=BLUE, alpha=0.85)
+        ax2.bar(df_gex_comp['Strike'] + bw/2, df_gex_comp['GEX_Puts'],
+                bw, label='GEX Puts',  color=RED,  alpha=0.85)
+        ax2.axhline(y=0, color=BORDER, linestyle='--', linewidth=1)
+        ax2.set_title(f"CALLS vs PUTS - {closest_expiration_date}")
+        ax2.legend(fontsize=8)
+        fig2.tight_layout()
+        st.pyplot(fig2)
 
     # ============================================================
     #  RESUME + EXPECTED MOVE AUTO
