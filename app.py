@@ -2434,10 +2434,10 @@ if uploaded_file is not None:
         except: return "N/A"
 
     wmult = (
-        f"WEEKLY x{MULTIPLIER} | "
-        f"CW: {safe_mult(wcall_wall)} | "
-        f"PW: {safe_mult(wput_wall)} | "
-        f"ZG: {safe_mult(wzero_gamma) if wzero_gamma else 'N/A'} | "
-        f"MAX: {safe_mult(wmax_abs)}"
+       safe_int_multiply(wcall_wall),
+        safe_int_multiply(wput_wall),
+        safe_int_multiply(wzero_gamma if zero_gamma else 0),
+        safe_int_multiply(wmax_abs[0]),
     )
     st.text_area(f"Niveaux Weekly × {MULTIPLIER}", value=wmult, height=70)
+
