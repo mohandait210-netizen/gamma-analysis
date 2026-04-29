@@ -2437,7 +2437,7 @@ if uploaded_file is not None:
        safe_int_multiply(wcall_wall),
         safe_int_multiply(wput_wall),
         safe_int_multiply(wzero_gamma if zero_gamma else 0),
-        safe_int_multiply(wmax_abs[0]),
+        safe_int_multiply(wmax_abs),
     )
     st.text_area(f"Niveaux Weekly × {MULTIPLIER}", value=wmult, height=70)
 
