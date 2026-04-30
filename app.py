@@ -2396,7 +2396,7 @@ if uploaded_file is not None:
 
     with tab_w3:
         fig_w3, ax_w3 = plt.subplots(figsize=(13, 6))
-        bw = 0.4
+        bw = 0.8
         df_comp_w = wgex[wgex["Strike"].isin(df_top_w["Strike"])].sort_values("Strike")
         ax_w3.bar(df_comp_w["Strike"]-bw/2, df_comp_w["GEX_Calls"],
                   bw, color=BLUE, alpha=0.85, label="GEX Calls Weekly")
