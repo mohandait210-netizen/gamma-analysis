@@ -422,7 +422,7 @@ if uploaded_file is not None:
         df_gex_comp = df_gex_comp[df_gex_comp['Strike'].isin(df_top_abs['Strike'])]
 
         fig2, ax2 = plt.subplots(figsize=(8, 4.5))
-        bw = 0.4
+        bw = 2
         ax2.bar(df_gex_comp['Strike'] - bw/2, df_gex_comp['GEX_Calls'],
                 bw, label='GEX Calls', color=BLUE, alpha=0.85)
         ax2.bar(df_gex_comp['Strike'] + bw/2, df_gex_comp['GEX_Puts'],
