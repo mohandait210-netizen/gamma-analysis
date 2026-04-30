@@ -422,7 +422,7 @@ if uploaded_file is not None:
         df_gex_comp = df_gex_comp[df_gex_comp['Strike'].isin(df_top_abs['Strike'])]
 
         fig2, ax2 = plt.subplots(figsize=(8, 4.5))
-        bw = 2
+        bw = 0.4
         ax2.bar(df_gex_comp['Strike'] - bw/2, df_gex_comp['GEX_Calls'],
                 bw, label='GEX Calls', color=BLUE, alpha=0.85)
         ax2.bar(df_gex_comp['Strike'] + bw/2, df_gex_comp['GEX_Puts'],
@@ -2396,7 +2396,7 @@ if uploaded_file is not None:
 
     with tab_w3:
         fig_w3, ax_w3 = plt.subplots(figsize=(13, 6))
-        bw = 3
+        bw = 0.4
         df_comp_w = wgex[wgex["Strike"].isin(df_top_w["Strike"])].sort_values("Strike")
         ax_w3.bar(df_comp_w["Strike"]-bw/2, df_comp_w["GEX_Calls"],
                   bw, color=BLUE, alpha=0.85, label="GEX Calls Weekly")
