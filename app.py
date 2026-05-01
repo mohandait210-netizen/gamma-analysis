@@ -302,7 +302,8 @@ st.markdown(
     # ============================================================
     #  FILTRAGE STRIKES ACTIFS
     # ============================================================
-    df_gex_active = df_gex[df_gex["ABS"] > 0].copy()
+    
+df_gex_active = df_gex[df_gex["ABS"] > 0].copy()
 
     # ============================================================
     #  EXPECTED MOVE + TARGET BUY/SELL (calculs auto)
