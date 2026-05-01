@@ -199,8 +199,20 @@ def get_spot_price(ticker: str) -> float:
         return 0.0
 
 spot = get_spot_price("QQQ")
-st.metric("Spot QQQ", f"{spot:.2f}")
 
+spot_display = f"{spot:.2f}" if spot > 0 else "N/A"
+
+st.markdown(
+    f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+    f"border-left:4px solid {BLUE};border-radius:8px;"
+    f"padding:0.5rem 1.2rem;margin-bottom:0.8rem;"
+    f"font-family:IBM Plex Mono,monospace;font-size:0.82rem;"
+    f"color:{BLUE};letter-spacing:0.08em;'>"
+    f"📡 QQQ · Spot : <b>{spot_display}</b> "
+    f"· Expiration la plus proche : <b>{closest_expiration_date}</b>"
+    f"</div>",
+    unsafe_allow_html=True
+)
 # ========================================
 
 if uploaded_file is not None:
