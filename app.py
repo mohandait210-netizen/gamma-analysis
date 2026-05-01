@@ -279,35 +279,25 @@ if uploaded_file is not None:
 
     # Zero Gamma : premier croisement de la courbe GEX avec y=0
     # entre le Put Wall et le Call Wall (definition correcte)
-   # ===== Regroupement par Strike =====
-    df_gex = (
-        df_filtered
-        .groupby("Strike")["GEX_Total"]
-        .sum()
-        .reset_index()
-        .sort_values("Strike")
-    )
+   zero_gamma = None
+    low_bound  = min(put_wall, call_wall) if isinstance(put_wall, (int,float)) and isinstance(call_wall, (int,float)) else None
+    high_bound = max(put_wall, call_wall) if isinstance(put_wall, (int,float)) and isinstance(call_wall, (int,float)) else None
 
-    # ===== Zero Gamma réel =====
-    zero_gamma = None
+    if low_bound is not None and high_bound is not None:
+        df_between = df_gex_sorted[
+            (df_gex_sorted["Strike"] >= low_bound) &
+            (df_gex_sorted["Strike"] <= high_bound) &
+            (df_gex_sorted["ABS"] > 0)
+        ].reset_index(drop=True)
 
-    for i in range(len(df_gex) - 1):
-        g0 = df_gex["GEX_Total"].iloc[i]
-        g1 = df_gex["GEX_Total"].iloc[i + 1]
-        s0 = df_gex["Strike"].iloc[i]
-        s1 = df_gex["Strike"].iloc[i + 1]
-
-        if g0 * g1 < 0:
-            zero_gamma = round(
-                s0 + (0 - g0) * (s1 - s0) / (g1 - g0),
-                2
-            )
-            break
-
-    # ============================================================
-    #  FILTRAGE STRIKES ACTIFS
-    # ============================================================
-    df_gex_active = df_gex[df_gex["ABS"] > 0].copy()
+        for i in range(len(df_between) - 1):
+            g0 = df_between["GEX"].iloc[i]
+            g1 = df_between["GEX"].iloc[i + 1]
+            s0 = df_between["Strike"].iloc[i]
+            s1 = df_between["Strike"].iloc[i + 1]
+            if g0 * g1 < 0:
+                zero_gamma = round(s0 + (0 - g0) * (s1 - s0) / (g1 - g0), 2)
+                break  # on prend le premier croisement entre les deux walls
 
     # ============================================================
     #  EXPECTED MOVE + TARGET BUY/SELL (calculs auto)
