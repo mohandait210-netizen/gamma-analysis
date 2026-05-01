@@ -209,7 +209,7 @@ st.markdown(
     f"font-family:IBM Plex Mono,monospace;font-size:0.82rem;"
     f"color:{BLUE};letter-spacing:0.08em;'>"
     f"📡 QQQ · Spot : <b>{spot_display}</b> "
-    f"· Expiration la plus proche : <b>{closest_expiration_date}</b>"
+    f"· Expiration la plus proche : <b>{current_date_dt}</b>"
     f"</div>",
     unsafe_allow_html=True
 )
