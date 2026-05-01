@@ -212,6 +212,35 @@ if uploaded_file is not None:
     closest_expiration_date_dt = min(unique_expiration_dates, key=lambda d: abs(d - current_date_dt))
     closest_expiration_date = closest_expiration_date_dt.strftime('%a %b %d %Y')
 
+    # ===== Spot QQQ depuis Yahoo Finance =====
+    # ===== Affichage Spot Yahoo =====
+    import yfinance as yf
+
+    def get_spot_price(ticker: str) -> float:
+        try:
+            tk = yf.Ticker(ticker)
+            hist = tk.history(period="1d")
+            if not hist.empty:
+                return float(hist["Close"].iloc[-1])
+            return float(tk.fast_info.get("last_price", 0))
+        except Exception:
+            return 0.0
+
+    spot = get_spot_price("QQQ")
+    spot_display = f"{spot:.2f}" if spot > 0 else "N/A"
+
+    st.markdown(
+        f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+        f"border-left:4px solid {BLUE};border-radius:8px;"
+        f"padding:0.5rem 1.2rem;margin-bottom:0.8rem;"
+        f"font-family:IBM Plex Mono,monospace;font-size:0.82rem;"
+        f"color:{BLUE};letter-spacing:0.08em;'>"
+        f"📡 QQQ · Spot : <b>{spot_display}</b> "
+        f"· Expiration la plus proche : <b>{closest_expiration_date}</b>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+
     # --- Filtrage & calculs GEX ---
     df_filtered = df[df['Expiration Date_dt'] == closest_expiration_date_dt].copy()
 
