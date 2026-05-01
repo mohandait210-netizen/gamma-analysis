@@ -231,7 +231,8 @@ if uploaded_file is not None:
     closest_expiration_date = closest_expiration_date_dt.strftime('%a %b %d %Y')
 
     # --- Filtrage & calculs GEX ---
-    S2 = spot_price ** 2
+    spot = get_spot_price("QQQ")
+    S2 = spot ** 2
     df_filtered = df[df['Expiration Date_dt'] == closest_expiration_date_dt].copy()
 
     for col in ["Gamma", "Open Interest", "Gamma.1", "Open Interest.1", "Strike"]:
