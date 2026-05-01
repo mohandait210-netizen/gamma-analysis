@@ -319,25 +319,6 @@ if uploaded_file is not None:
         target_sell = int(df_puts_ts.iloc[(df_puts_ts["Delta.1"].abs() - 0.25).abs().argsort().iloc[0]]["Strike"])
 
     # ============================================================
-    #  afficher le spot
-    # ============================================================
-
-   def get_spot_price(ticker: str) -> float:
-    """Récupère le prix spot actuel du ticker."""
-    try:
-        tk = yf.Ticker(ticker)
-        hist = tk.history(period="1d")
-        if not hist.empty:
-            return float(hist["Close"].iloc[-1])
-        info = tk.fast_info
-        return float(getattr(info, "last_price", 0) or 0)
-    except Exception:
-        return 0.0
-
-
-spot = get_spot_price("QQQ")
-st.metric("Spot QQQ", f"{spot:.2f}")
-    # ============================================================
     #  RÉSUMÉ PRINCIPAL — 8 métriques clés
     # ============================================================
     is_positive  = net_gex > 0
