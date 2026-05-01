@@ -279,7 +279,7 @@ if uploaded_file is not None:
 
     # Zero Gamma : premier croisement de la courbe GEX avec y=0
     # entre le Put Wall et le Call Wall (definition correcte)
-   zero_gamma = None
+    zero_gamma = None
     low_bound  = min(put_wall, call_wall) if isinstance(put_wall, (int,float)) and isinstance(call_wall, (int,float)) else None
     high_bound = max(put_wall, call_wall) if isinstance(put_wall, (int,float)) and isinstance(call_wall, (int,float)) else None
 
