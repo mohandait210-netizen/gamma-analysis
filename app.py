@@ -239,10 +239,10 @@ if uploaded_file is not None:
         df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce')
 
     df_filtered["GEX_Calls"] = (
-        df_filtered["Gamma"] * df_filtered["Open Interest"] * (df_filtered["Strike"] ** 2) * S2 * 100
+        df_filtered["Gamma"] * df_filtered["Open Interest"] * S2 * 100
     )
     df_filtered["GEX_Puts"] = (
-        df_filtered["Gamma.1"] * df_filtered["Open Interest.1"] * (df_filtered["Strike"] ** 2) * S2 * 100 * -1
+        df_filtered["Gamma.1"] * df_filtered["Open Interest.1"] * S2 * 100 * -1
     )
     df_filtered["GEX_Total"] = df_filtered["GEX_Calls"] + df_filtered["GEX_Puts"]
     df_filtered["ABS_Total"]  = abs(df_filtered["GEX_Calls"]) + abs(df_filtered["GEX_Puts"])
