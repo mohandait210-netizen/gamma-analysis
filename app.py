@@ -185,8 +185,6 @@ st.markdown("""
 # ============================================================
 uploaded_file = st.file_uploader("📂  Téléverse ton fichier CSV", type=["csv"])
 
-# ========================================
-
 if uploaded_file is not None:
 
     # --- Lecture robuste ---
@@ -214,48 +212,17 @@ if uploaded_file is not None:
     closest_expiration_date_dt = min(unique_expiration_dates, key=lambda d: abs(d - current_date_dt))
     closest_expiration_date = closest_expiration_date_dt.strftime('%a %b %d %Y')
 
-    # ===== Spot QQQ depuis Yahoo Finance =====
-    # ===== Affichage Spot Yahoo =====
-    import yfinance as yf
-
-    def get_spot_price(ticker: str) -> float:
-        try:
-            tk = yf.Ticker(ticker)
-            hist = tk.history(period="1d")
-            if not hist.empty:
-                return float(hist["Close"].iloc[-1])
-            return float(tk.fast_info.get("last_price", 0))
-        except Exception:
-            return 0.0
-
-    spot = get_spot_price("QQQ")
-    spot_display = f"{spot:.2f}" if spot > 0 else "N/A"
-
-    st.markdown(
-        f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
-        f"border-left:4px solid {BLUE};border-radius:8px;"
-        f"padding:0.5rem 1.2rem;margin-bottom:0.8rem;"
-        f"font-family:IBM Plex Mono,monospace;font-size:0.82rem;"
-        f"color:{BLUE};letter-spacing:0.08em;'>"
-        f"📡 QQQ · Spot : <b>{spot_display}</b> "
-        f"· Expiration la plus proche : <b>{closest_expiration_date}</b>"
-        f"</div>",
-        unsafe_allow_html=True
-    )
-
     # --- Filtrage & calculs GEX ---
-    spot = get_spot_price("QQQ")
-    S2 = spot ** 2
     df_filtered = df[df['Expiration Date_dt'] == closest_expiration_date_dt].copy()
 
     for col in ["Gamma", "Open Interest", "Gamma.1", "Open Interest.1", "Strike"]:
         df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce')
 
     df_filtered["GEX_Calls"] = (
-        df_filtered["Gamma"] * df_filtered["Open Interest"] * S2 * 100
+        df_filtered["Gamma"] * df_filtered["Open Interest"] * (df_filtered["Strike"] ** 2) * 100
     )
     df_filtered["GEX_Puts"] = (
-        df_filtered["Gamma.1"] * df_filtered["Open Interest.1"] * S2 * 100 * -1
+        df_filtered["Gamma.1"] * df_filtered["Open Interest.1"] * (df_filtered["Strike"] ** 2) * 100 * -1
     )
     df_filtered["GEX_Total"] = df_filtered["GEX_Calls"] + df_filtered["GEX_Puts"]
     df_filtered["ABS_Total"]  = abs(df_filtered["GEX_Calls"]) + abs(df_filtered["GEX_Puts"])
@@ -298,6 +265,13 @@ if uploaded_file is not None:
             if g0 * g1 < 0:
                 zero_gamma = round(s0 + (0 - g0) * (s1 - s0) / (g1 - g0), 2)
                 break  # on prend le premier croisement entre les deux walls
+
+
+
+    # ============================================================
+    #  FILTRAGE STRIKES ACTIFS
+    # ============================================================
+    df_gex_active = df_gex[df_gex["ABS"] > 0].copy()
 
     # ============================================================
     #  EXPECTED MOVE + TARGET BUY/SELL (calculs auto)
