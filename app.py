@@ -185,6 +185,24 @@ st.markdown("""
 # ============================================================
 uploaded_file = st.file_uploader("📂  Téléverse ton fichier CSV", type=["csv"])
 
+# ===== Spot QQQ depuis Yahoo Finance =====
+import yfinance as yf
+
+def get_spot_price(ticker: str) -> float:
+    try:
+        tk = yf.Ticker(ticker)
+        hist = tk.history(period="1d")
+        if not hist.empty:
+            return float(hist["Close"].iloc[-1])
+        return float(tk.fast_info.get("last_price", 0))
+    except Exception:
+        return 0.0
+
+spot = get_spot_price("QQQ")
+st.metric("Spot QQQ", f"{spot:.2f}")
+
+# ========================================
+
 if uploaded_file is not None:
 
     # --- Lecture robuste ---
