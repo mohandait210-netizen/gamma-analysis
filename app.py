@@ -231,16 +231,17 @@ if uploaded_file is not None:
     closest_expiration_date = closest_expiration_date_dt.strftime('%a %b %d %Y')
 
     # --- Filtrage & calculs GEX ---
+    S2 = spot_price ** 2
     df_filtered = df[df['Expiration Date_dt'] == closest_expiration_date_dt].copy()
 
     for col in ["Gamma", "Open Interest", "Gamma.1", "Open Interest.1", "Strike"]:
         df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce')
 
     df_filtered["GEX_Calls"] = (
-        df_filtered["Gamma"] * df_filtered["Open Interest"] * (df_filtered["Strike"] ** 2) * 100
+        df_filtered["Gamma"] * df_filtered["Open Interest"] * (df_filtered["Strike"] ** 2) * S2 * 100
     )
     df_filtered["GEX_Puts"] = (
-        df_filtered["Gamma.1"] * df_filtered["Open Interest.1"] * (df_filtered["Strike"] ** 2) * 100 * -1
+        df_filtered["Gamma.1"] * df_filtered["Open Interest.1"] * (df_filtered["Strike"] ** 2) * S2 * 100 * -1
     )
     df_filtered["GEX_Total"] = df_filtered["GEX_Calls"] + df_filtered["GEX_Puts"]
     df_filtered["ABS_Total"]  = abs(df_filtered["GEX_Calls"]) + abs(df_filtered["GEX_Puts"])
