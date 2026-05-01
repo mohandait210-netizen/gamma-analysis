@@ -185,16 +185,21 @@ st.markdown("""
 # ============================================================
 
     def get_spot_price(ticker: str) -> float:
-    """Récupère le prix spot actuel du ticker."""
-    try:
-        tk = yf.Ticker(ticker)
-        hist = tk.history(period="1d")
+    tk = yf.Ticker(ticker)
+
+    # Méthode la plus fiable en live
+    info = tk.fast_info
+    spot = info.get("last_price", None)
+
+    if spot is None:
+        # fallback si fast_info ne répond pas
+        hist = tk.history(period="1d", interval="1m")
         if not hist.empty:
-            return float(hist["Close"].iloc[-1])
-        info = tk.fast_info
-        return float(getattr(info, "last_price", 0) or 0)
-    except Exception:
-        return 0.0
+            spot = hist["Close"].iloc[-1]
+        else:
+            spot = 0.0
+
+    return float(spot)
 
 
 # ============================================================
