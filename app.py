@@ -279,29 +279,30 @@ if uploaded_file is not None:
 
     # Zero Gamma : premier croisement de la courbe GEX avec y=0
     # entre le Put Wall et le Call Wall (definition correcte)
-   df_gex = (
-    df_filtered
-    .groupby("Strike")["GEX_Total"]
-    .sum()
-    .reset_index()
-    .sort_values("Strike")
-)
-zero_gamma = None
+   # ===== Regroupement par Strike =====
+    df_gex = (
+        df_filtered
+        .groupby("Strike")["GEX_Total"]
+        .sum()
+        .reset_index()
+        .sort_values("Strike")
+    )
 
-for i in range(len(df_gex) - 1):
-    g0 = df_gex["GEX_Total"].iloc[i]
-    g1 = df_gex["GEX_Total"].iloc[i + 1]
-    s0 = df_gex["Strike"].iloc[i]
-    s1 = df_gex["Strike"].iloc[i + 1]
+    # ===== Zero Gamma réel =====
+    zero_gamma = None
 
-    # changement de signe réel
-    if g0 * g1 < 0:
-        zero_gamma = round(
-            s0 + (0 - g0) * (s1 - s0) / (g1 - g0),
-            2
-        )
-        break
+    for i in range(len(df_gex) - 1):
+        g0 = df_gex["GEX_Total"].iloc[i]
+        g1 = df_gex["GEX_Total"].iloc[i + 1]
+        s0 = df_gex["Strike"].iloc[i]
+        s1 = df_gex["Strike"].iloc[i + 1]
 
+        if g0 * g1 < 0:
+            zero_gamma = round(
+                s0 + (0 - g0) * (s1 - s0) / (g1 - g0),
+                2
+            )
+            break
 
     # ============================================================
     #  FILTRAGE STRIKES ACTIFS
