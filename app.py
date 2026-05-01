@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
+import yfinance as yf
 from datetime import datetime
 from pathlib import Path
 from scipy.stats import norm as sp_norm
@@ -317,6 +318,25 @@ if uploaded_file is not None:
     if not df_puts_ts.empty:
         target_sell = int(df_puts_ts.iloc[(df_puts_ts["Delta.1"].abs() - 0.25).abs().argsort().iloc[0]]["Strike"])
 
+    # ============================================================
+    #  afficher le spot
+    # ============================================================
+
+   def get_spot_price(ticker: str) -> float:
+    """Récupère le prix spot actuel du ticker."""
+    try:
+        tk = yf.Ticker(ticker)
+        hist = tk.history(period="1d")
+        if not hist.empty:
+            return float(hist["Close"].iloc[-1])
+        info = tk.fast_info
+        return float(getattr(info, "last_price", 0) or 0)
+    except Exception:
+        return 0.0
+
+
+spot = get_spot_price("QQQ")
+st.metric("Spot QQQ", f"{spot:.2f}")
     # ============================================================
     #  RÉSUMÉ PRINCIPAL — 8 métriques clés
     # ============================================================
