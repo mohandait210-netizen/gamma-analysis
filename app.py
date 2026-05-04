@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib as mpl
 import numpy as np
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
 from datetime import datetime
 from pathlib import Path
 from scipy.stats import norm as sp_norm
@@ -27,48 +26,46 @@ if css_path.exists():
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 # ============================================================
+#  MATPLOTLIB DARK THEME
+# ============================================================
+DARK_BG     = "#090c10"
+CARD_BG     = "#0e1318"
+BORDER      = "#1e2d3d"
+GREEN       = "#00ff9d"
+RED         = "#ff3c5a"
+ORANGE      = "#ff9a00"
+BLUE        = "#00aaff"
+TEXT        = "#e8f0f7"
+MUTED       = "#5a7a94"
+
+mpl.rcParams.update({
+    "figure.facecolor":  DARK_BG,
+    "axes.facecolor":    CARD_BG,
+    "axes.edgecolor":    BORDER,
+    "axes.labelcolor":   MUTED,
+    "axes.titlecolor":   TEXT,
+    "axes.titlesize":    13,
+    "axes.titleweight":  "bold",
+    "axes.titlepad":     14,
+    "axes.grid":         True,
+    "grid.color":        BORDER,
+    "grid.linewidth":    0.6,
+    "xtick.color":       MUTED,
+    "ytick.color":       MUTED,
+    "xtick.labelsize":   9,
+    "ytick.labelsize":   9,
+    "legend.facecolor":  CARD_BG,
+    "legend.edgecolor":  BORDER,
+    "legend.labelcolor": TEXT,
+    "legend.fontsize":   9,
+    "text.color":        TEXT,
+    "font.family":       "monospace",
+})
+
+# ============================================================
 #  CONSTANTS
 # ============================================================
 MULTIPLIER_DEFAULT = 41.36  # Ratio QQQ → NQ Futures (change chaque jour)
-
-# Couleurs pour plotly
-COLORS = {
-    'bg': '#090c10',
-    'card': '#0e1318',
-    'border': '#1e2d3d',
-    'green': '#00ff9d',
-    'red': '#ff3c5a',
-    'orange': '#ff9a00',
-    'blue': '#00aaff',
-    'text': '#e8f0f7',
-    'muted': '#5a7a94'
-}
-
-# Configuration du template plotly
-PLOTLY_TEMPLATE = {
-    'layout': {
-        'paper_bgcolor': COLORS['bg'],
-        'plot_bgcolor': COLORS['card'],
-        'font': {'color': COLORS['text'], 'family': 'monospace'},
-        'xaxis': {
-            'gridcolor': COLORS['border'],
-            'linecolor': COLORS['border'],
-            'title_font': {'color': COLORS['muted']},
-            'tickfont': {'color': COLORS['muted']}
-        },
-        'yaxis': {
-            'gridcolor': COLORS['border'],
-            'linecolor': COLORS['border'],
-            'title_font': {'color': COLORS['muted']},
-            'tickfont': {'color': COLORS['muted']}
-        },
-        'hoverlabel': {
-            'bgcolor': COLORS['card'],
-            'font_size': 11,
-            'font_family': 'monospace'
-        }
-    }
-}
 
 # ============================================================
 #  HEADER
@@ -184,219 +181,6 @@ st.markdown("""
 
 
 # ============================================================
-#  FONCTIONS UTILITAIRES POUR LES GRAPHIQUES PLOTLY
-# ============================================================
-
-def create_gex_curve_plotly(df_top_abs, call_wall, put_wall, zero_gamma, title):
-    """Crée un graphique interactif de la courbe GEX avec plotly"""
-    
-    # Préparer les données pour les zones colorées
-    df_positive = df_top_abs[df_top_abs['GEX'] >= 0].copy()
-    df_negative = df_top_abs[df_top_abs['GEX'] < 0].copy()
-    
-    fig = go.Figure()
-    
-    # Ligne principale GEX
-    fig.add_trace(go.Scatter(
-        x=df_top_abs['Strike'],
-        y=df_top_abs['GEX'],
-        mode='lines+markers',
-        name='GEX',
-        line=dict(color=COLORS['blue'], width=1.5),
-        marker=dict(size=4, color=COLORS['blue'], symbol='circle'),
-        hovertemplate='<b>Strike: %{x:.2f}</b><br>' +
-                      'GEX: %{y:,.2f}<br>' +
-                      '<extra></extra>'
-    ))
-    
-    # Zones colorées (simulées avec des scatter fill)
-    if not df_positive.empty:
-        fig.add_trace(go.Scatter(
-            x=pd.concat([df_positive['Strike'], df_positive['Strike'][::-1]]),
-            y=pd.concat([df_positive['GEX'], pd.Series([0]*len(df_positive))]),
-            fill='toself',
-            fillcolor=f'rgba(0, 255, 157, 0.15)',
-            line=dict(color='rgba(0,0,0,0)'),
-            name='GEX Positif',
-            showlegend=False,
-            hoverinfo='skip'
-        ))
-    
-    if not df_negative.empty:
-        fig.add_trace(go.Scatter(
-            x=pd.concat([df_negative['Strike'], df_negative['Strike'][::-1]]),
-            y=pd.concat([df_negative['GEX'], pd.Series([0]*len(df_negative))]),
-            fill='toself',
-            fillcolor=f'rgba(255, 60, 90, 0.15)',
-            line=dict(color='rgba(0,0,0,0)'),
-            name='GEX Négatif',
-            showlegend=False,
-            hoverinfo='skip'
-        ))
-    
-    # Ligne horizontale zéro
-    fig.add_hline(y=0, line_dash="dash", line_color=COLORS['border'], line_width=1)
-    
-    # Call Wall
-    if isinstance(call_wall, (int, float)):
-        fig.add_vline(x=call_wall, line_dash="dash", line_color=COLORS['blue'], line_width=1.2,
-                      annotation_text=f"Call Wall ({int(call_wall)})",
-                      annotation_position="top",
-                      annotation_font_size=10)
-    
-    # Put Wall
-    if isinstance(put_wall, (int, float)):
-        fig.add_vline(x=put_wall, line_dash="dash", line_color=COLORS['red'], line_width=1.2,
-                      annotation_text=f"Put Wall ({int(put_wall)})",
-                      annotation_position="bottom",
-                      annotation_font_size=10)
-    
-    # Zero Gamma
-    if zero_gamma is not None:
-        fig.add_vline(x=zero_gamma, line_dash="dash", line_color=COLORS['orange'], line_width=1.2,
-                      annotation_text=f"Zero Gamma ({zero_gamma})",
-                      annotation_position="top",
-                      annotation_font_size=10)
-    
-    fig.update_layout(
-        title=dict(text=title, font=dict(size=13, color=COLORS['text'])),
-        xaxis_title="Strike Price",
-        yaxis_title="GEX",
-        hovermode='closest',
-        **PLOTLY_TEMPLATE['layout']
-    )
-    
-    return fig
-
-
-def create_calls_vs_puts_plotly(df_gex_comp, title):
-    """Crée un graphique à barres interactif Calls vs Puts"""
-    
-    fig = go.Figure()
-    
-    # Barres pour les Calls
-    fig.add_trace(go.Bar(
-        x=df_gex_comp['Strike'],
-        y=df_gex_comp['GEX_Calls'],
-        name='GEX Calls',
-        marker_color=COLORS['blue'],
-        opacity=0.85,
-        width=0.8,
-        hovertemplate='<b>Strike: %{x:.2f}</b><br>' +
-                      'GEX Calls: %{y:,.2f}<br>' +
-                      '<extra></extra>'
-    ))
-    
-    # Barres pour les Puts
-    fig.add_trace(go.Bar(
-        x=df_gex_comp['Strike'],
-        y=df_gex_comp['GEX_Puts'],
-        name='GEX Puts',
-        marker_color=COLORS['red'],
-        opacity=0.85,
-        width=0.8,
-        hovertemplate='<b>Strike: %{x:.2f}</b><br>' +
-                      'GEX Puts: %{y:,.2f}<br>' +
-                      '<extra></extra>'
-    ))
-    
-    # Ligne horizontale zéro
-    fig.add_hline(y=0, line_dash="dash", line_color=COLORS['border'], line_width=1)
-    
-    # Configuration du layout pour barres groupées
-    fig.update_layout(
-        title=dict(text=title, font=dict(size=13, color=COLORS['text'])),
-        xaxis_title="Strike Price",
-        yaxis_title="GEX",
-        barmode='group',
-        hovermode='closest',
-        **PLOTLY_TEMPLATE['layout']
-    )
-    
-    return fig
-
-
-def create_dex_curve_plotly(df_top_dex, delta_call_wall, delta_put_wall, zero_dex, title):
-    """Crée un graphique interactif de la courbe DEX avec plotly"""
-    
-    # Préparer les données pour les zones colorées
-    df_positive = df_top_dex[df_top_dex['DEX_Total'] >= 0].copy()
-    df_negative = df_top_dex[df_top_dex['DEX_Total'] < 0].copy()
-    
-    fig = go.Figure()
-    
-    # Ligne principale DEX
-    fig.add_trace(go.Scatter(
-        x=df_top_dex['Strike'],
-        y=df_top_dex['DEX_Total'],
-        mode='lines+markers',
-        name='DEX Total',
-        line=dict(color=COLORS['blue'], width=1.8),
-        marker=dict(size=4, color=COLORS['blue'], symbol='circle'),
-        hovertemplate='<b>Strike: %{x:.2f}</b><br>' +
-                      'DEX Total: %{y:.2e}<br>' +
-                      '<extra></extra>'
-    ))
-    
-    # Zones colorées
-    if not df_positive.empty:
-        fig.add_trace(go.Scatter(
-            x=pd.concat([df_positive['Strike'], df_positive['Strike'][::-1]]),
-            y=pd.concat([df_positive['DEX_Total'], pd.Series([0]*len(df_positive))]),
-            fill='toself',
-            fillcolor=f'rgba(0, 255, 157, 0.15)',
-            line=dict(color='rgba(0,0,0,0)'),
-            name='DEX Positif',
-            showlegend=False,
-            hoverinfo='skip'
-        ))
-    
-    if not df_negative.empty:
-        fig.add_trace(go.Scatter(
-            x=pd.concat([df_negative['Strike'], df_negative['Strike'][::-1]]),
-            y=pd.concat([df_negative['DEX_Total'], pd.Series([0]*len(df_negative))]),
-            fill='toself',
-            fillcolor=f'rgba(255, 60, 90, 0.15)',
-            line=dict(color='rgba(0,0,0,0)'),
-            name='DEX Négatif',
-            showlegend=False,
-            hoverinfo='skip'
-        ))
-    
-    # Ligne horizontale zéro
-    fig.add_hline(y=0, line_dash="dash", line_color=COLORS['border'], line_width=1)
-    
-    # Lignes verticales clés
-    if isinstance(delta_call_wall, (int, float)):
-        fig.add_vline(x=delta_call_wall, line_dash="dash", line_color=COLORS['blue'], line_width=1.2,
-                      annotation_text=f"Delta Call Wall ({int(delta_call_wall)})",
-                      annotation_position="top",
-                      annotation_font_size=10)
-    
-    if isinstance(delta_put_wall, (int, float)):
-        fig.add_vline(x=delta_put_wall, line_dash="dash", line_color=COLORS['red'], line_width=1.2,
-                      annotation_text=f"Delta Put Wall ({int(delta_put_wall)})",
-                      annotation_position="bottom",
-                      annotation_font_size=10)
-    
-    if zero_dex is not None:
-        fig.add_vline(x=zero_dex, line_dash="dash", line_color=COLORS['orange'], line_width=1.2,
-                      annotation_text=f"Zero DEX ({zero_dex})",
-                      annotation_position="top",
-                      annotation_font_size=10)
-    
-    fig.update_layout(
-        title=dict(text=title, font=dict(size=13, color=COLORS['text'])),
-        xaxis_title="Strike Price",
-        yaxis_title="Delta Exposure (DEX)",
-        hovermode='closest',
-        **PLOTLY_TEMPLATE['layout']
-    )
-    
-    return fig
-
-
-# ============================================================
 #  FILE UPLOAD
 # ============================================================
 uploaded_file = st.file_uploader("📂  Téléverse ton fichier CSV", type=["csv"])
@@ -461,6 +245,7 @@ if uploaded_file is not None:
                 if not df_gex_negative.empty else 'N/A')
 
     # Zero Gamma : premier croisement de la courbe GEX avec y=0
+    # entre le Put Wall et le Call Wall (definition correcte)
     zero_gamma = None
     low_bound  = min(put_wall, call_wall) if isinstance(put_wall, (int,float)) and isinstance(call_wall, (int,float)) else None
     high_bound = max(put_wall, call_wall) if isinstance(put_wall, (int,float)) and isinstance(call_wall, (int,float)) else None
@@ -479,7 +264,9 @@ if uploaded_file is not None:
             s1 = df_between["Strike"].iloc[i + 1]
             if g0 * g1 < 0:
                 zero_gamma = round(s0 + (0 - g0) * (s1 - s0) / (g1 - g0), 2)
-                break
+                break  # on prend le premier croisement entre les deux walls
+
+
 
     # ============================================================
     #  FILTRAGE STRIKES ACTIFS
@@ -520,7 +307,7 @@ if uploaded_file is not None:
             em_plus  = round(atm_strike + em_value, 2)
             em_minus = round(atm_strike - em_value, 2)
 
-    # Target Buy = strike call dont le delta est le plus proche de 0.25
+    # Target Buy  = strike call dont le delta est le plus proche de 0.25
     df_calls_tb = df_filtered[df_filtered["Delta"].notna() & (df_filtered["Delta"] > 0) & (df_filtered["IV"] > 0)]
     if not df_calls_tb.empty:
         target_buy = int(df_calls_tb.iloc[(df_calls_tb["Delta"] - 0.25).abs().argsort().iloc[0]]["Strike"])
@@ -534,7 +321,7 @@ if uploaded_file is not None:
     #  RÉSUMÉ PRINCIPAL — 8 métriques clés
     # ============================================================
     is_positive  = net_gex > 0
-    regime_color = COLORS['green'] if is_positive else COLORS['red']
+    regime_color = GREEN if is_positive else RED
     regime_label = "POSITIVE GAMMA" if is_positive else "NEGATIVE GAMMA"
     regime_icon  = "🟢 Market Pinned" if is_positive else "🔴 Volatile"
     net_gex_m    = round(net_gex / 1e6, 2)
@@ -556,57 +343,74 @@ if uploaded_file is not None:
     # Ligne 1 : 4 niveaux GEX
     def kpi_card(label, value, color, sub=""):
         return (
-            f"<div style='background:{COLORS['card']};border:1px solid {COLORS['border']};"
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
             f"border-left:3px solid {color};border-radius:8px;"
             f"padding:0.85rem 1rem;height:100%;'>"
             f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.65rem;"
-            f"color:{COLORS['muted']};letter-spacing:0.1em;text-transform:uppercase;"
+            f"color:{MUTED};letter-spacing:0.1em;text-transform:uppercase;"
             f"margin-bottom:0.4rem;'>{label}</div>"
             f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.35rem;"
             f"font-weight:700;color:{color};'>{value}</div>"
-            f"<div style='font-size:0.7rem;color:{COLORS['muted']};margin-top:0.2rem;'>{sub}</div>"
+            f"<div style='font-size:0.7rem;color:{MUTED};margin-top:0.2rem;'>{sub}</div>"
             f"</div>"
         )
 
     r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-    r1c1.markdown(kpi_card("Call Wall",  int(call_wall) if isinstance(call_wall,(int,float)) else "N/A",  COLORS['blue'],   "Résistance GEX"), unsafe_allow_html=True)
-    r1c2.markdown(kpi_card("Put Wall",   int(put_wall)  if isinstance(put_wall,(int,float))  else "N/A",  COLORS['red'],    "Support GEX"),    unsafe_allow_html=True)
-    r1c3.markdown(kpi_card("Zero Gamma", zero_gamma if zero_gamma else "N/A",                             COLORS['orange'], "Flip regime"),    unsafe_allow_html=True)
+    r1c1.markdown(kpi_card("Call Wall",  int(call_wall) if isinstance(call_wall,(int,float)) else "N/A",  BLUE,   "Résistance GEX"), unsafe_allow_html=True)
+    r1c2.markdown(kpi_card("Put Wall",   int(put_wall)  if isinstance(put_wall,(int,float))  else "N/A",  RED,    "Support GEX"),    unsafe_allow_html=True)
+    r1c3.markdown(kpi_card("Zero Gamma", zero_gamma if zero_gamma else "N/A",                             ORANGE, "Flip regime"),    unsafe_allow_html=True)
     r1c4.markdown(kpi_card("Net GEX",    f"{net_gex_m:,.0f} M",                                          regime_color, regime_label), unsafe_allow_html=True)
 
     st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
 
     # Ligne 2 : EM + Target Buy/Sell
     r2c1, r2c2, r2c3, r2c4 = st.columns(4)
-    r2c1.markdown(kpi_card("Expected Move ±", f"{em_value}" if em_value != "N/A" else "N/A", COLORS['green'], f"ATM {int(atm_strike) if atm_strike else '—'}"), unsafe_allow_html=True)
+    r2c1.markdown(kpi_card("Expected Move ±", f"{em_value}" if em_value != "N/A" else "N/A", GREEN, f"ATM {int(atm_strike) if atm_strike else '—'}"), unsafe_allow_html=True)
     r2c2.markdown(kpi_card("EM+  /  EM−",
         f"{em_plus} / {em_minus}" if em_plus != "N/A" else "N/A",
-        COLORS['green'], "Zone de prix attendue"), unsafe_allow_html=True)
+        GREEN, "Zone de prix attendue"), unsafe_allow_html=True)
     r2c3.markdown(kpi_card("Target Buy",  f"{target_buy}",  "#34d399", "Call delta 25 — IV"), unsafe_allow_html=True)
     r2c4.markdown(kpi_card("Target Sell", f"{target_sell}", "#f87171", "Put delta 25 — IV"),  unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ============================================================
-    #  GRAPHIQUES INTERACTIFS AVEC PLOTLY
+    #  GRAPHIQUES
     # ============================================================
     top_n = st.slider("Nombre de strikes dominants", 5, 50, 50)
     df_top_abs = df_gex_active.nlargest(top_n, 'ABS').sort_values("Strike")
 
     chart_col1, chart_col2 = st.columns(2)
 
-    # -- Courbe GEX interactive --
+    # -- Courbe GEX --
     with chart_col1:
-        fig1 = create_gex_curve_plotly(
-            df_top_abs, 
-            call_wall, 
-            put_wall, 
-            zero_gamma, 
-            f"GAMMA EXPOSURE CURVE - {closest_expiration_date}"
-        )
-        st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': True})
+        fig, ax = plt.subplots(figsize=(8, 4.5))
+        ax.fill_between(df_top_abs["Strike"], df_top_abs["GEX"], 0,
+                        where=df_top_abs["GEX"] >= 0,
+                        alpha=0.15, color=GREEN, interpolate=True)
+        ax.fill_between(df_top_abs["Strike"], df_top_abs["GEX"], 0,
+                        where=df_top_abs["GEX"] < 0,
+                        alpha=0.15, color=RED, interpolate=True)
+        ax.plot(df_top_abs["Strike"], df_top_abs["GEX"],
+                marker='o', markersize=3, linestyle='-',
+                color=BLUE, linewidth=1.5, label='GEX')
+        ax.axhline(y=0, color=BORDER, linestyle="--", linewidth=1)
 
-    # -- Calls vs Puts interactif --
+        if isinstance(call_wall, (int, float)):
+            ax.axvline(x=call_wall,  color=BLUE,   linestyle='--', linewidth=1.2, label=f'Call Wall ({int(call_wall)})')
+        if isinstance(put_wall, (int, float)):
+            ax.axvline(x=put_wall,   color=RED,    linestyle='--', linewidth=1.2, label=f'Put Wall ({int(put_wall)})')
+        if zero_gamma is not None:
+            ax.axvline(x=zero_gamma, color=ORANGE, linestyle='--', linewidth=1.2, label=f'Zero Gamma ({zero_gamma})')
+
+        ax.set_title(f"GAMMA EXPOSURE CURVE - {closest_expiration_date}")
+        ax.set_xlabel("Strike Price")
+        ax.set_ylabel("GEX")
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        st.pyplot(fig)
+
+    # -- Calls vs Puts --
     with chart_col2:
         df_gex_comp = (
             df_filtered[['Strike', 'GEX_Calls', 'GEX_Puts']]
@@ -616,12 +420,18 @@ if uploaded_file is not None:
             .reset_index()
         )
         df_gex_comp = df_gex_comp[df_gex_comp['Strike'].isin(df_top_abs['Strike'])]
-        
-        fig2 = create_calls_vs_puts_plotly(
-            df_gex_comp,
-            f"CALLS vs PUTS - {closest_expiration_date}"
-        )
-        st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': True})
+
+        fig2, ax2 = plt.subplots(figsize=(8, 4.5))
+        bw = 0.4
+        ax2.bar(df_gex_comp['Strike'] - bw/2, df_gex_comp['GEX_Calls'],
+                bw, label='GEX Calls', color=BLUE, alpha=0.85)
+        ax2.bar(df_gex_comp['Strike'] + bw/2, df_gex_comp['GEX_Puts'],
+                bw, label='GEX Puts',  color=RED,  alpha=0.85)
+        ax2.axhline(y=0, color=BORDER, linestyle='--', linewidth=1)
+        ax2.set_title(f"CALLS vs PUTS - {closest_expiration_date}")
+        ax2.legend(fontsize=8)
+        fig2.tight_layout()
+        st.pyplot(fig2)
 
     # ============================================================
     #  RESUME + EXPECTED MOVE AUTO
@@ -703,12 +513,15 @@ if uploaded_file is not None:
         unsafe_allow_html=True
     )
 
-    # ============================================================
-    #  IV SKEW SECTION (optionnellement interactive)
-    # ============================================================
-    st.markdown('<div id="iv-skew"></div>', unsafe_allow_html=True)
-    st.markdown("---")
-    st.markdown("### 📐 IV Skew — Smile de Volatilite")
+
+# ============================================================
+#  IV SKEW SECTION
+# ============================================================
+st.markdown('<div id="iv-skew"></div>', unsafe_allow_html=True)
+st.markdown("---")
+st.markdown("### 📐 IV Skew — Smile de Volatilite")
+
+if uploaded_file is not None:
 
     # Expiration selectionnee par slider
     expiry_options = sorted(df['Expiration Date_dt'].dropna().unique())
@@ -720,19 +533,25 @@ if uploaded_file is not None:
     for col in ["Strike","IV","IV.1","Delta","Delta.1","Open Interest","Open Interest.1"]:
         df_skew[col] = pd.to_numeric(df_skew[col], errors='coerce')
 
+    # Calls et Puts avec IV valide
     df_c = df_skew[df_skew["IV"]   > 0][["Strike","IV","Delta","Open Interest"]].copy()
     df_p = df_skew[df_skew["IV.1"] > 0][["Strike","IV.1","Delta.1","Open Interest.1"]].copy()
     df_p.rename(columns={"IV.1":"IV","Delta.1":"Delta","Open Interest.1":"Open Interest"}, inplace=True)
 
-    if not (df_c.empty or df_p.empty):
+    if df_c.empty or df_p.empty:
+        st.warning("Pas assez de donnees IV pour cette expiration.")
+    else:
+        # ATM = strike ou delta call est le plus proche de 0.5
         atm = df_c.iloc[(df_c['Delta'] - 0.5).abs().argsort()[:1]]['Strike'].values[0]
 
+        # Skew metrics
         put_25  = df_p.iloc[(df_p['Delta'].abs() - 0.25).abs().argsort()[:1]]
         call_25 = df_c.iloc[(df_c['Delta'] - 0.25).abs().argsort()[:1]]
         atm_iv  = df_c.iloc[(df_c['Delta'] - 0.5).abs().argsort()[:1]]['IV'].values[0]
         skew_25 = put_25['IV'].values[0] - call_25['IV'].values[0]
         skew_pct = skew_25 * 100
 
+        # KPI skew
         sk1, sk2, sk3, sk4 = st.columns(4)
         sk1.metric("ATM IV",          f"{atm_iv*100:.2f}%")
         sk2.metric("IV Put 25-delta", f"{put_25['IV'].values[0]*100:.2f}%", delta=f"strike {int(put_25['Strike'].values[0])}")
@@ -741,80 +560,48 @@ if uploaded_file is not None:
                    delta="Put premium" if skew_25 > 0 else "Call premium",
                    delta_color="inverse" if skew_25 < 0 else "normal")
 
-        # Graphique IV Skew interactif
-        from plotly.subplots import make_subplots
-        
-        fig_iv = go.Figure()
-        
+        # Graphique
+        fig3, ax3 = plt.subplots(figsize=(12, 5))
+
+        # Trier par strike
         df_c_s = df_c.sort_values("Strike")
         df_p_s = df_p.sort_values("Strike")
-        
-        fig_iv.add_trace(go.Scatter(
-            x=df_c_s["Strike"], y=df_c_s["IV"]*100,
-            mode='lines+markers',
-            name='IV Calls',
-            line=dict(color=COLORS['blue'], width=1.8),
-            marker=dict(size=4, symbol='circle'),
-            hovertemplate='<b>Strike: %{x:.2f}</b><br>IV Calls: %{y:.2f}%<extra></extra>'
-        ))
-        
-        fig_iv.add_trace(go.Scatter(
-            x=df_p_s["Strike"], y=df_p_s["IV"]*100,
-            mode='lines+markers',
-            name='IV Puts',
-            line=dict(color=COLORS['red'], width=1.8, dash='dash'),
-            marker=dict(size=4, symbol='circle'),
-            hovertemplate='<b>Strike: %{x:.2f}</b><br>IV Puts: %{y:.2f}%<extra></extra>'
-        ))
-        
-        # Zones colorées
-        fig_iv.add_trace(go.Scatter(
-            x=df_c_s["Strike"], y=df_c_s["IV"]*100,
-            fill='tozeroy', fillcolor='rgba(0, 170, 255, 0.08)',
-            line=dict(color='rgba(0,0,0,0)'), name='Zone Calls', showlegend=False
-        ))
-        
-        fig_iv.add_trace(go.Scatter(
-            x=df_p_s["Strike"], y=df_p_s["IV"]*100,
-            fill='tozeroy', fillcolor='rgba(255, 60, 90, 0.08)',
-            line=dict(color='rgba(0,0,0,0)'), name='Zone Puts', showlegend=False
-        ))
-        
-        fig_iv.add_vline(x=atm, line_dash="dash", line_color=COLORS['green'], line_width=1.5,
-                         annotation_text=f'ATM ({int(atm)})', annotation_position="top")
-        
-        if isinstance(put_wall, (int,float)):
-            fig_iv.add_vline(x=put_wall, line_dash="dot", line_color=COLORS['red'], line_width=1,
-                             annotation_text=f'Put Wall ({int(put_wall)})', annotation_position="bottom",
-                             annotation_font_size=9)
-        
+
+        ax3.plot(df_c_s["Strike"], df_c_s["IV"]*100,
+                 color=BLUE, linewidth=1.8, marker='o', markersize=3, label='IV Calls')
+        ax3.plot(df_p_s["Strike"], df_p_s["IV"]*100,
+                 color=RED,  linewidth=1.8, marker='o', markersize=3, label='IV Puts', linestyle='--')
+
+        # Zones colorees
+        ax3.fill_between(df_c_s["Strike"], df_c_s["IV"]*100,
+                         alpha=0.08, color=BLUE)
+        ax3.fill_between(df_p_s["Strike"], df_p_s["IV"]*100,
+                         alpha=0.08, color=RED)
+
+        # Lignes verticales cles
+        ax3.axvline(x=atm, color=GREEN, linestyle='--', linewidth=1.5, label=f'ATM ({int(atm)})')
+        if isinstance(put_wall,  (int,float)):
+            ax3.axvline(x=put_wall,  color=RED,    linestyle=':', linewidth=1, alpha=0.7, label=f'Put Wall ({int(put_wall)})')
         if isinstance(call_wall, (int,float)):
-            fig_iv.add_vline(x=call_wall, line_dash="dot", line_color=COLORS['blue'], line_width=1,
-                             annotation_text=f'Call Wall ({int(call_wall)})', annotation_position="top",
-                             annotation_font_size=9)
-        
-        fig_iv.add_annotation(
-            x=atm, y=atm_iv*100 + 1.5,
-            text=f'Skew 25d: {skew_pct:+.2f}%',
-            showarrow=True,
-            arrowhead=2,
-            arrowsize=1,
-            arrowwidth=2,
-            arrowcolor=COLORS['orange'],
-            font=dict(size=9, color=COLORS['orange'])
-        )
-        
-        fig_iv.update_layout(
-            title=f'IV SKEW - {selected_label}',
-            xaxis_title="Strike Price",
-            yaxis_title="Implied Volatility (%)",
-            hovermode='closest',
-            **PLOTLY_TEMPLATE['layout']
-        )
-        
-        st.plotly_chart(fig_iv, use_container_width=True, config={'displayModeBar': True})
-        
-        interp_color = COLORS['green'] if skew_25 > 0.005 else (COLORS['red'] if skew_25 < -0.005 else COLORS['orange'])
+            ax3.axvline(x=call_wall, color=BLUE,   linestyle=':', linewidth=1, alpha=0.7, label=f'Call Wall ({int(call_wall)})')
+
+        # Annotation skew
+        ax3.annotate(f'Skew 25d: {skew_pct:+.2f}%',
+                     xy=(atm, atm_iv*100),
+                     xytext=(atm + 8, atm_iv*100 + 1.5),
+                     fontsize=9, color=ORANGE,
+                     arrowprops=dict(arrowstyle='->', color=ORANGE, lw=1))
+
+        ax3.set_title(f'IV SKEW - {selected_label}', fontsize=13, fontweight='bold')
+        ax3.set_xlabel("Strike Price")
+        ax3.set_ylabel("Implied Volatility (%)")
+        ax3.legend(fontsize=9)
+        ax3.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.1f}%'))
+        fig3.tight_layout()
+        st.pyplot(fig3)
+
+        # Interpretation
+        interp_color = GREEN if skew_25 > 0.005 else (RED if skew_25 < -0.005 else ORANGE)
         if skew_25 > 0.015:
             msg = "Put premium eleve - le marche paye cher la protection baissiere (fear dominant)"
         elif skew_25 > 0.005:
@@ -825,22 +612,26 @@ if uploaded_file is not None:
             msg = "Skew quasi-nul - marche indecis, calls et puts valorises pareillement"
 
         st.markdown(
-            f"<div style='background:{COLORS['card']};border:1px solid {COLORS['border']};"
-            f"border-left:3px solid {COLORS['orange']};border-radius:8px;"
+            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+            f"border-left:3px solid {ORANGE};border-radius:8px;"
             f"padding:0.75rem 1.25rem;font-family:IBM Plex Mono,monospace;"
-            f"font-size:0.82rem;color:{COLORS['text']};margin-top:0.5rem;'>"
-            f"<b style='color:{COLORS['orange']};'>INTERPRETATION :</b> {msg}"
+            f"font-size:0.82rem;color:{TEXT};margin-top:0.5rem;'>"
+            f"<b style='color:{ORANGE};'>INTERPRETATION :</b> {msg}"
             f"</div>",
             unsafe_allow_html=True
         )
 
-    # ============================================================
-    #  DELTA EXPOSURE (DEX) SECTION avec graphiques interactifs
-    # ============================================================
-    st.markdown('<div id="dex"></div>', unsafe_allow_html=True)
-    st.markdown("---")
-    st.markdown("### 🧭 Delta Exposure (DEX) — Biais Directionnel")
 
+# ============================================================
+#  DELTA EXPOSURE (DEX) SECTION
+# ============================================================
+st.markdown('<div id="dex"></div>', unsafe_allow_html=True)
+st.markdown("---")
+st.markdown("### 🧭 Delta Exposure (DEX) — Biais Directionnel")
+
+if uploaded_file is not None:
+
+    # Selecteur expiration
     selected_label_dex = st.selectbox("Expiration (DEX)", expiry_labels,
         index=expiry_labels.index(closest_expiration_date) if closest_expiration_date in expiry_labels else 0,
         key="dex_expiry")
@@ -850,6 +641,10 @@ if uploaded_file is not None:
     for col in ["Strike","Delta","Delta.1","Open Interest","Open Interest.1"]:
         df_dex_raw[col] = pd.to_numeric(df_dex_raw[col], errors='coerce')
 
+    # Calcul DEX
+    # DEX = Delta * OI * Strike * 100
+    # Delta call > 0  -> pression acheteuse quand le prix monte
+    # Delta put  < 0  -> pression vendeuse quand le prix monte
     df_dex_raw["DEX_Calls"] = df_dex_raw["Delta"]   * df_dex_raw["Open Interest"]   * df_dex_raw["Strike"] * 100
     df_dex_raw["DEX_Puts"]  = df_dex_raw["Delta.1"] * df_dex_raw["Open Interest.1"] * df_dex_raw["Strike"] * 100
 
@@ -858,16 +653,18 @@ if uploaded_file is not None:
     df_dex["ABS_DEX"]   = df_dex["DEX_Total"].abs()
     df_dex_sorted = df_dex.sort_values("Strike")
 
+    # Niveaux cles
     net_dex      = df_dex["DEX_Total"].sum()
     is_bull_dex  = net_dex > 0
     dex_regime   = "HAUSSIER" if is_bull_dex else "BAISSIER"
-    dex_color    = COLORS['green'] if is_bull_dex else COLORS['red']
+    dex_color    = GREEN if is_bull_dex else RED
 
     df_dex_pos = df_dex[df_dex["DEX_Calls"] > 0]
     df_dex_neg = df_dex[df_dex["DEX_Puts"]  < 0]
     delta_call_wall = df_dex_pos.loc[df_dex_pos["DEX_Calls"].idxmax(), "Strike"] if not df_dex_pos.empty else "N/A"
     delta_put_wall  = df_dex_neg.loc[df_dex_neg["DEX_Puts"].idxmin(),  "Strike"] if not df_dex_neg.empty else "N/A"
 
+    # Zero DEX : croisement de la courbe DEX_Total avec y=0 entre les deux walls
     zero_dex = None
     if isinstance(delta_call_wall, (int,float)) and isinstance(delta_put_wall, (int,float)):
         low_dex  = min(delta_call_wall, delta_put_wall)
@@ -886,93 +683,96 @@ if uploaded_file is not None:
                 zero_dex = round(s0 + (0 - d0) * (s1 - s0) / (d1 - d0), 2)
                 break
 
-    # KPI cards
+    # --- KPI cards ---
     d1c, d2c, d3c, d4c = st.columns(4)
-    d1c.markdown(kpi_card("NET DEX", f"{net_dex:.2e}", dex_color, dex_regime), unsafe_allow_html=True)
-    d2c.markdown(kpi_card("DELTA CALL WALL", delta_call_wall, COLORS['blue'], "Resistance delta"), unsafe_allow_html=True)
-    d3c.markdown(kpi_card("DELTA PUT WALL", delta_put_wall, COLORS['red'], "Support delta"), unsafe_allow_html=True)
-    d4c.markdown(kpi_card("ZERO DEX", zero_dex if zero_dex else 'N/A', COLORS['orange'], "Pivot directionnel"), unsafe_allow_html=True)
+    d1c.markdown(
+        f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+        f"border-left:3px solid {dex_color};border-radius:8px;padding:1rem 1.2rem;'>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;color:{MUTED};"
+        f"letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;'>NET DEX</div>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.3rem;"
+        f"font-weight:600;color:{dex_color};'>{net_dex:.2e}</div>"
+        f"<div style='font-size:0.75rem;color:{dex_color};margin-top:0.3rem;'>{dex_regime}</div>"
+        f"</div>", unsafe_allow_html=True)
+    d2c.markdown(
+        f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+        f"border-left:3px solid {BLUE};border-radius:8px;padding:1rem 1.2rem;'>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;color:{MUTED};"
+        f"letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;'>DELTA CALL WALL</div>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.3rem;"
+        f"font-weight:600;color:{BLUE};'>{delta_call_wall}</div>"
+        f"<div style='font-size:0.75rem;color:{MUTED};margin-top:0.3rem;'>Resistance delta</div>"
+        f"</div>", unsafe_allow_html=True)
+    d3c.markdown(
+        f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+        f"border-left:3px solid {RED};border-radius:8px;padding:1rem 1.2rem;'>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;color:{MUTED};"
+        f"letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;'>DELTA PUT WALL</div>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.3rem;"
+        f"font-weight:600;color:{RED};'>{delta_put_wall}</div>"
+        f"<div style='font-size:0.75rem;color:{MUTED};margin-top:0.3rem;'>Support delta</div>"
+        f"</div>", unsafe_allow_html=True)
+    d4c.markdown(
+        f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+        f"border-left:3px solid {ORANGE};border-radius:8px;padding:1rem 1.2rem;'>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:0.7rem;color:{MUTED};"
+        f"letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;'>ZERO DEX</div>"
+        f"<div style='font-family:IBM Plex Mono,monospace;font-size:1.3rem;"
+        f"font-weight:600;color:{ORANGE};'>{zero_dex if zero_dex else 'N/A'}</div>"
+        f"<div style='font-size:0.75rem;color:{MUTED};margin-top:0.3rem;'>Pivot directionnel</div>"
+        f"</div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Graphiques DEX interactifs
+    # --- Graphiques cote a cote ---
     top_n_dex = st.slider("Nombre de strikes (DEX)", 5, 60, 50, key="dex_slider")
     df_top_dex = df_dex.nlargest(top_n_dex, "ABS_DEX").sort_values("Strike")
 
-    # Subplot: courbe DEX à gauche, barres à droite
-    fig_dex = make_subplots(rows=1, cols=2, 
-                            subplot_titles=("DELTA EXPOSURE - Courbe Totale", "DEX CALLS vs PUTS"),
-                            horizontal_spacing=0.12)
+    fig_d1, fig_d2 = plt.subplots(1, 2, figsize=(14, 5))
 
-    # Courbe DEX
-    df_dex_pos_curve = df_top_dex[df_top_dex['DEX_Total'] >= 0]
-    df_dex_neg_curve = df_top_dex[df_top_dex['DEX_Total'] < 0]
+    # -- Courbe DEX Total --
+    ax_d1 = fig_d1
+    ax_d1 = fig_d2  # on va utiliser subplots correctement
+    fig_dex, (axd1, axd2) = plt.subplots(1, 2, figsize=(14, 5))
 
-    if not df_dex_pos_curve.empty:
-        fig_dex.add_trace(go.Scatter(
-            x=df_dex_pos_curve["Strike"], y=df_dex_pos_curve["DEX_Total"],
-            mode='lines+markers', name='DEX Total',
-            line=dict(color=COLORS['blue'], width=1.8),
-            marker=dict(size=4, color=COLORS['blue']),
-            fill='tozeroy', fillcolor='rgba(0, 255, 157, 0.15)',
-            hovertemplate='<b>Strike: %{x:.2f}</b><br>DEX: %{y:.2e}<extra></extra>'
-        ), row=1, col=1)
-
-    if not df_dex_neg_curve.empty:
-        fig_dex.add_trace(go.Scatter(
-            x=df_dex_neg_curve["Strike"], y=df_dex_neg_curve["DEX_Total"],
-            mode='lines+markers', name='DEX Total',
-            line=dict(color=COLORS['blue'], width=1.8),
-            marker=dict(size=4, color=COLORS['blue']),
-            fill='tozeroy', fillcolor='rgba(255, 60, 90, 0.15)',
-            showlegend=False,
-            hovertemplate='<b>Strike: %{x:.2f}</b><br>DEX: %{y:.2e}<extra></extra>'
-        ), row=1, col=1)
-
-    fig_dex.add_hline(y=0, line_dash="dash", line_color=COLORS['border'], row=1, col=1)
+    # Courbe DEX total
+    colors_dex = [GREEN if v >= 0 else RED for v in df_top_dex["DEX_Total"]]
+    axd1.fill_between(df_top_dex["Strike"], df_top_dex["DEX_Total"], 0,
+                      where=df_top_dex["DEX_Total"] >= 0, alpha=0.2, color=GREEN, interpolate=True)
+    axd1.fill_between(df_top_dex["Strike"], df_top_dex["DEX_Total"], 0,
+                      where=df_top_dex["DEX_Total"] < 0,  alpha=0.2, color=RED,   interpolate=True)
+    axd1.plot(df_top_dex["Strike"], df_top_dex["DEX_Total"],
+              color=BLUE, linewidth=1.8, marker='o', markersize=3, label='DEX Total')
+    axd1.axhline(y=0, color=BORDER, linestyle="--", linewidth=1)
 
     if isinstance(delta_call_wall, (int,float)):
-        fig_dex.add_vline(x=delta_call_wall, line_dash="dash", line_color=COLORS['blue'], 
-                          annotation_text=f"DCW ({int(delta_call_wall)})", annotation_position="top",
-                          row=1, col=1)
-    if isinstance(delta_put_wall, (int,float)):
-        fig_dex.add_vline(x=delta_put_wall, line_dash="dash", line_color=COLORS['red'],
-                          annotation_text=f"DPW ({int(delta_put_wall)})", annotation_position="bottom",
-                          row=1, col=1)
+        axd1.axvline(x=delta_call_wall, color=BLUE,   linestyle='--', linewidth=1.2, label=f'Delta Call Wall ({int(delta_call_wall)})')
+    if isinstance(delta_put_wall,  (int,float)):
+        axd1.axvline(x=delta_put_wall,  color=RED,    linestyle='--', linewidth=1.2, label=f'Delta Put Wall ({int(delta_put_wall)})')
+    if zero_dex:
+        axd1.axvline(x=zero_dex, color=ORANGE, linestyle='--', linewidth=1.2, label=f'Zero DEX ({zero_dex})')
+
+    axd1.set_title("DELTA EXPOSURE - Courbe Totale")
+    axd1.set_xlabel("Strike Price")
+    axd1.set_ylabel("Delta Exposure (DEX)")
+    axd1.legend(fontsize=8)
 
     # Barres Calls vs Puts
+    bar_w = 0.4
     df_comp = df_dex[df_dex["Strike"].isin(df_top_dex["Strike"])].sort_values("Strike")
-    
-    fig_dex.add_trace(go.Bar(
-        x=df_comp["Strike"], y=df_comp["DEX_Calls"],
-        name='DEX Calls', marker_color=COLORS['blue'], opacity=0.85,
-        hovertemplate='<b>Strike: %{x:.2f}</b><br>DEX Calls: %{y:.2e}<extra></extra>'
-    ), row=1, col=2)
-    
-    fig_dex.add_trace(go.Bar(
-        x=df_comp["Strike"], y=df_comp["DEX_Puts"],
-        name='DEX Puts', marker_color=COLORS['red'], opacity=0.85,
-        hovertemplate='<b>Strike: %{x:.2f}</b><br>DEX Puts: %{y:.2e}<extra></extra>'
-    ), row=1, col=2)
+    axd2.bar(df_comp["Strike"] - bar_w/2, df_comp["DEX_Calls"],
+             bar_w, label='DEX Calls', color=BLUE,  alpha=0.85)
+    axd2.bar(df_comp["Strike"] + bar_w/2, df_comp["DEX_Puts"],
+             bar_w, label='DEX Puts',  color=RED,   alpha=0.85)
+    axd2.axhline(y=0, color=BORDER, linestyle='--', linewidth=1)
+    axd2.set_title("DEX CALLS vs PUTS")
+    axd2.set_xlabel("Strike Price")
+    axd2.legend(fontsize=8)
 
-    fig_dex.add_hline(y=0, line_dash="dash", line_color=COLORS['border'], row=1, col=2)
+    fig_dex.tight_layout()
+    st.pyplot(fig_dex)
 
-    fig_dex.update_layout(
-        title="Delta Exposure Analysis",
-        hovermode='closest',
-        barmode='group',
-        showlegend=True,
-        **PLOTLY_TEMPLATE['layout']
-    )
-
-    fig_dex.update_xaxes(title_text="Strike Price", row=1, col=1)
-    fig_dex.update_yaxes(title_text="Delta Exposure (DEX)", row=1, col=1)
-    fig_dex.update_xaxes(title_text="Strike Price", row=1, col=2)
-    fig_dex.update_yaxes(title_text="DEX", row=1, col=2)
-
-    st.plotly_chart(fig_dex, use_container_width=True, config={'displayModeBar': True})
-
-    # Interpretation
+    # --- Interpretation ---
     if net_dex > 0:
         if net_dex > 5e9:
             interp_dex = "DEX tres positif : les market makers sont massivement long delta -> hedging acheteur au-dessus du spot, frein naturel a la baisse"
@@ -985,16 +785,16 @@ if uploaded_file is not None:
             interp_dex = "DEX negatif : biais directionnel baissier, les MM amplifient les baisses"
 
     st.markdown(
-        f"<div style='background:{COLORS['card']};border:1px solid {COLORS['border']};"
+        f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
         f"border-left:3px solid {dex_color};border-radius:8px;"
         f"padding:0.75rem 1.25rem;font-family:IBM Plex Mono,monospace;"
-        f"font-size:0.82rem;color:{COLORS['text']};margin-top:0.5rem;'>"
+        f"font-size:0.82rem;color:{TEXT};margin-top:0.5rem;'>"
         f"<b style='color:{dex_color};'>INTERPRETATION :</b> {interp_dex}"
         f"</div>",
         unsafe_allow_html=True
     )
 
-    # Resume DEX
+    # --- Résumé DEX ---
     st.markdown("#### 📋 Resume DEX")
     df_dex_summary = pd.DataFrame({
         'Metric': ['NET DEX', 'Regime', 'Delta Call Wall', 'Delta Put Wall', 'Zero DEX'],
@@ -2641,4 +2441,3 @@ if uploaded_file is not None:
         f"MAX: {safe_mult(wmax_abs)}"
     )
     st.text_area(f"Niveaux Weekly × {MULTIPLIER}", value=wmult, height=70)
-
