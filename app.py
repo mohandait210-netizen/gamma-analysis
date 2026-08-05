@@ -8,7 +8,7 @@ from pathlib import Path
 from scipy.stats import norm as sp_norm
 
 # ===========================================================
-#  PAGE CONFIG
+#  PAGE CONFIGn
 # ===========================================================
 st.set_page_config(
     page_title="GEX Analyser",
